@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
+import MapView from "./MapView";
 
 export default function App() {
   const [shops, setShops] = useState([]);
@@ -279,6 +280,11 @@ export default function App() {
       <div style={{ padding: "0 16px 16px" }}>
         {tab === "detail" && selectedShop ? <DetailView /> : (
           <>
+          {tab === "list" && (
+  <div style={{ padding: "14px 0" }}>
+    <MapView shops={filteredShops} onSelectShop={(shop) => { setSelectedShop(shop); setTab("detail"); }} />
+  </div>
+)}
             {tab === "list" && (
               <div style={{ display: "flex", gap: 8, padding: "14px 0", flexWrap: "wrap" }}>
                 {[["all", "すべて"], ["wagashi", "和菓子"], ["chocolate", "チョコレート"], ["cake", "ケーキ"], ["cookie", "クッキー"], ["gift", "手土産向け"]].map(([id, label]) => (
