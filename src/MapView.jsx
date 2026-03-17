@@ -61,8 +61,8 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
 
   // Route state
   const [routeOpen, setRouteOpen] = useState(false);
-  const [origin, setOrigin] = useState(null);
-  const [originLabel, setOriginLabel] = useState("");
+  const [originCoords, setOriginCoords] = useState(null); // {lat,lng} from geolocation
+  const [originText, setOriginText] = useState("");       // manual text input
   const [destination, setDestination] = useState("");
   const [directionsResult, setDirectionsResult] = useState(null);
   const [localRouteShopIds, setLocalRouteShopIds] = useState(null);
@@ -110,14 +110,14 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
     }
   }, [selectedStation]);
 
-  function getCurrentLocation() {
+  function useCurrentLocation() {
     setGettingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setOrigin(loc);
+        setOriginCoords(loc);
+        setOriginText("現在地");
         setCurrentLocation(loc);
-        setOriginLabel("現在地");
         setGettingLocation(false);
       },
       () => {
@@ -127,42 +127,38 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
     );
   }
 
-  async function searchRoute() {
-    if (!origin || !destination.trim()) {
-      alert("現在地と目的地を設定してください");
+  function searchRoute() {
+    const hasOrigin = originCoords || originText.trim();
+    if (!hasOrigin || !destination.trim()) {
+      alert("出発地と目的地を設定してください");
       return;
     }
     setSearching(true);
 
+    const originParam = originCoords
+      ? new window.google.maps.LatLng(originCoords.lat, originCoords.lng)
+      : originText.trim();
+
     const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: new window.google.maps.LatLng(origin.lat, origin.lng),
-        destination: destination,
-        travelMode: window.google.maps.TravelMode.TRANSIT,
-        transitOptions: { departureTime: new Date() },
-      },
-      (result, status) => {
-        if (status !== "OK") {
-          directionsService.route(
-            {
-              origin: new window.google.maps.LatLng(origin.lat, origin.lng),
-              destination: destination,
-              travelMode: window.google.maps.TravelMode.DRIVING,
-            },
-            (r2, s2) => {
-              if (s2 === "OK") {
-                applyRouteFilter(r2);
-              } else {
-                alert("ルートが見つかりませんでした");
-                setSearching(false);
-              }
-            }
-          );
-          return;
+
+    function tryMode(mode, onFail) {
+      directionsService.route(
+        { origin: originParam, destination, travelMode: mode },
+        (result, status) => {
+          if (status === "OK") {
+            applyRouteFilter(result);
+          } else {
+            onFail();
+          }
         }
-        applyRouteFilter(result);
-      }
+      );
+    }
+
+    tryMode(window.google.maps.TravelMode.WALKING, () =>
+      tryMode(window.google.maps.TravelMode.DRIVING, () => {
+        alert("ルートが見つかりませんでした");
+        setSearching(false);
+      })
     );
   }
 
@@ -197,8 +193,8 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
   function clearRoute() {
     setDirectionsResult(null);
     setLocalRouteShopIds(null);
-    setOrigin(null);
-    setOriginLabel("");
+    setOriginCoords(null);
+    setOriginText("");
     setDestination("");
     onRouteShopsChange?.(null);
   }
@@ -263,62 +259,89 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
               padding: "12px 14px",
               marginTop: 8,
               display: "flex",
-              flexWrap: "wrap",
+              flexDirection: "column",
               gap: 8,
-              alignItems: "center",
             }}
           >
-            <button
-              onClick={getCurrentLocation}
-              disabled={gettingLocation}
-              style={{
-                background: origin ? "#FFF8F0" : "#f5f0ea",
-                border: `0.5px solid ${origin ? "#FF8C00" : "#ddd"}`,
-                borderRadius: 8,
-                padding: "6px 12px",
-                fontSize: 13,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                color: origin ? "#FF8C00" : "#666",
-              }}
-            >
-              {gettingLocation ? "取得中..." : originLabel ? `📍 ${originLabel}` : "📍 現在地を取得"}
-            </button>
-            <span style={{ color: "#bbb", fontSize: 16 }}>→</span>
-            <input
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && searchRoute()}
-              placeholder="目的地（例: 新宿駅）"
-              style={{
-                flex: 1,
-                minWidth: 140,
-                padding: "6px 10px",
-                border: "0.5px solid #ddd",
-                borderRadius: 8,
-                fontSize: 13,
-              }}
-            />
-            <button
-              onClick={searchRoute}
-              disabled={searching || !origin || !destination.trim()}
-              style={{
-                background: "#FF8C00",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                padding: "6px 16px",
-                fontSize: 13,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                opacity: !origin || !destination.trim() ? 0.5 : 1,
-              }}
-            >
-              {searching ? "検索中..." : "検索"}
-            </button>
+            {/* 出発地行 */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>出発地</span>
+              <button
+                onClick={useCurrentLocation}
+                disabled={gettingLocation}
+                style={{
+                  background: originCoords ? "#FFF8F0" : "#f5f0ea",
+                  border: `0.5px solid ${originCoords ? "#FF8C00" : "#ddd"}`,
+                  borderRadius: 8,
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  color: originCoords ? "#FF8C00" : "#666",
+                }}
+              >
+                {gettingLocation ? "取得中..." : "📍 現在地を使う"}
+              </button>
+              <input
+                value={originCoords ? "" : originText}
+                onChange={(e) => {
+                  setOriginCoords(null);
+                  setOriginText(e.target.value);
+                }}
+                placeholder={originCoords ? "現在地を使用中" : "または駅名・住所を入力"}
+                disabled={!!originCoords}
+                style={{
+                  flex: 1,
+                  minWidth: 130,
+                  padding: "5px 10px",
+                  border: "0.5px solid #ddd",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  background: originCoords ? "#f5f5f5" : "white",
+                  color: originCoords ? "#aaa" : "#333",
+                }}
+              />
+            </div>
+
+            {/* 目的地行 */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>目的地</span>
+              <input
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && searchRoute()}
+                placeholder="駅名・住所を入力（例: 新宿駅）"
+                style={{
+                  flex: 1,
+                  minWidth: 140,
+                  padding: "5px 10px",
+                  border: "0.5px solid #ddd",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              />
+              <button
+                onClick={searchRoute}
+                disabled={searching || (!originCoords && !originText.trim()) || !destination.trim()}
+                style={{
+                  background: "#FF8C00",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "5px 16px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  opacity: (!originCoords && !originText.trim()) || !destination.trim() ? 0.5 : 1,
+                }}
+              >
+                {searching ? "検索中..." : "検索"}
+              </button>
+            </div>
+
             {directionsResult && (
-              <>
-                <span style={{ fontSize: 13, color: "#888" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "#888" }}>
                   {localRouteShopIds?.size ?? 0}件の手土産店が見つかりました
                 </span>
                 <button
@@ -327,15 +350,15 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
                     background: "none",
                     border: "0.5px solid #ddd",
                     borderRadius: 8,
-                    padding: "6px 12px",
-                    fontSize: 13,
+                    padding: "4px 12px",
+                    fontSize: 12,
                     cursor: "pointer",
                     color: "#888",
                   }}
                 >
                   クリア
                 </button>
-              </>
+              </div>
             )}
           </div>
         )}
