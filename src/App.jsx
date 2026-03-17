@@ -120,13 +120,35 @@ function isClosedToday(shop) {
   return shop.closed_days.some(d => today.startsWith(d) || d === "祝日");
 }
 
-function isOpenNow(hours) {
+function parseHoursRange(hours) {
   if (!hours) return null;
-  const m = hours.match(/(\d{1,2}):(\d{2})[〜～\-ー](\d{1,2}):(\d{2})/);
+  // 括弧内の注記（月曜定休など）を除去してから時間範囲を抽出
+  const cleaned = hours.replace(/[（(][^）)]*[）)]/g, "");
+  const m = cleaned.match(/(\d{1,2}):(\d{2})\s*[〜～\-ーー–—]\s*(\d{1,2}):(\d{2})/);
   if (!m) return null;
   const [, oh, om, ch, cm] = m.map(Number);
+  return { open: oh * 60 + om, close: ch * 60 + cm };
+}
+
+function isOpenNow(hours) {
+  const range = parseHoursRange(hours);
+  if (!range) return null;
   const cur = new Date().getHours() * 60 + new Date().getMinutes();
-  return cur >= oh * 60 + om && cur < ch * 60 + cm;
+  const { open, close } = range;
+  // 深夜をまたぐ場合（例: 22:00〜2:00）
+  if (close < open) return cur >= open || cur < close;
+  return cur >= open && cur < close;
+}
+
+function isOpenAt(hours, timeStr) {
+  if (!timeStr) return null;
+  const range = parseHoursRange(hours);
+  if (!range) return null;
+  const [th, tm] = timeStr.split(":").map(Number);
+  const target = th * 60 + (tm || 0);
+  const { open, close } = range;
+  if (close < open) return target >= open || target < close;
+  return target >= open && target < close;
 }
 
 function FilterChip({ active, onClick, label, chevron }) {
@@ -204,9 +226,10 @@ export default function App() {
   const [loading, setLoading]           = useState(true);
   const [filterOpenNow, setFilterOpenNow]       = useState(false);
   const [filterSkipClosed, setFilterSkipClosed] = useState(false);
-  const [filterInsideGate, setFilterInsideGate] = useState(false);
+  const [gateFilter, setGateFilter]             = useState(null); // null | "inside" | "outside"
   const [filterCashless, setFilterCashless]     = useState(false);
   const [filterLimited, setFilterLimited]       = useState(false);
+  const [filterAtTime, setFilterAtTime]         = useState("");
   const [excludeQuery, setExcludeQuery]         = useState("");
   const [inquiries, setInquiries]               = useState([]);
   const [inqSubject, setInqSubject]             = useState("");
@@ -369,9 +392,11 @@ export default function App() {
     }
     if (filterOpenNow && isOpenNow(s.hours) === false) return false;
     if (filterSkipClosed && isClosedToday(s)) return false;
-    if (filterInsideGate && !s.is_inside_gate) return false;
+    if (gateFilter === "inside"  && s.is_inside_gate !== true)  return false;
+    if (gateFilter === "outside" && s.is_inside_gate !== false) return false;
     if (filterCashless && !s.payment_methods?.some(m => m !== "現金")) return false;
     if (filterLimited && !s.is_limited_period) return false;
+    if (filterAtTime && isOpenAt(s.hours, filterAtTime) === false) return false;
     return true;
   });
 
@@ -1114,11 +1139,44 @@ export default function App() {
               <button className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white">
                 <SlidersHorizontal size={14} className="text-gray-600" />
               </button>
-              <FilterChip active={filterOpenNow}    onClick={() => setFilterOpenNow(o => !o)}    label="今営業中" />
+              <FilterChip active={filterOpenNow}    onClick={() => setFilterOpenNow(o => !o)}    label="いま営業中" />
               <FilterChip active={filterSkipClosed} onClick={() => setFilterSkipClosed(o => !o)} label="定休日除く" />
-              <FilterChip active={filterInsideGate} onClick={() => setFilterInsideGate(o => !o)} label="改札内" />
+              {/* 改札内/外トグル */}
+              <FilterChip
+                active={gateFilter === "inside"}
+                onClick={() => setGateFilter(g => g === "inside" ? null : "inside")}
+                label="🚉改札内"
+              />
+              <FilterChip
+                active={gateFilter === "outside"}
+                onClick={() => setGateFilter(g => g === "outside" ? null : "outside")}
+                label="改札外"
+              />
               <FilterChip active={filterCashless}   onClick={() => setFilterCashless(o => !o)}   label="現金以外OK" />
               <FilterChip active={filterLimited}    onClick={() => setFilterLimited(o => !o)}     label="期間限定" />
+              {/* 時間指定フィルター */}
+              <div className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs bg-white border border-gray-200 whitespace-nowrap">
+                <Clock size={10} className="text-gray-400 flex-shrink-0" />
+                <select
+                  value={filterAtTime}
+                  onChange={e => setFilterAtTime(e.target.value)}
+                  className="bg-transparent outline-none text-xs cursor-pointer"
+                  style={{ color: filterAtTime ? "#FF8C00" : "#555", fontWeight: filterAtTime ? 600 : 400 }}
+                >
+                  <option value="">時間指定</option>
+                  {Array.from({ length: 33 }, (_, i) => {
+                    const totalMin = 7 * 60 + i * 30;
+                    const h = Math.floor(totalMin / 60);
+                    const m = totalMin % 60 === 0 ? "00" : "30";
+                    const val = `${h}:${m}`;
+                    return <option key={val} value={val}>{val}</option>;
+                  })}
+                </select>
+                {filterAtTime && (
+                  <button onClick={() => setFilterAtTime("")}
+                    className="bg-transparent border-none cursor-pointer p-0 text-gray-400 leading-none">×</button>
+                )}
+              </div>
               {/* 除外ワード */}
               <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs bg-white border border-gray-200 min-w-0">
                 <X size={10} className="text-gray-400 flex-shrink-0" />
