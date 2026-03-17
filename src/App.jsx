@@ -15,17 +15,24 @@ const BLUE    = "#0066CC";
 const FONT    = "'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif";
 
 const CATEGORIES = [
-  { id: "all",       label: "すべて",       emoji: "🎁" },
-  { id: "wagashi",   label: "和菓子",       emoji: "🍡" },
-  { id: "cake",      label: "ケーキ",       emoji: "🎂" },
-  { id: "chocolate", label: "チョコ",       emoji: "🍫" },
-  { id: "donut",     label: "ドーナツ",     emoji: "🍩" },
-  { id: "cookie",    label: "クッキー",     emoji: "🍪" },
-  { id: "icecream",  label: "アイス",       emoji: "🍦" },
-  { id: "pudding",   label: "プリン",       emoji: "🍮" },
-  { id: "macaron",   label: "マカロン",     emoji: "🧁" },
-  { id: "tart",      label: "タルト",       emoji: "🥧" },
-  { id: "gift",      label: "手土産",       emoji: "🎀" },
+  { id: "all",        label: "すべて",        emoji: "🎁" },
+  { id: "wagashi",    label: "和菓子",        emoji: "🍡" },
+  { id: "cake",       label: "ケーキ",        emoji: "🎂" },
+  { id: "chocolate",  label: "チョコ",        emoji: "🍫" },
+  { id: "donut",      label: "ドーナツ",      emoji: "🍩" },
+  { id: "cookie",     label: "クッキー",      emoji: "🍪" },
+  { id: "icecream",   label: "アイス",        emoji: "🍦" },
+  { id: "pudding",    label: "プリン",        emoji: "🍮" },
+  { id: "macaron",    label: "マカロン",      emoji: "🧁" },
+  { id: "tart",       label: "タルト",        emoji: "🥧" },
+  { id: "baked",      label: "焼き菓子",      emoji: "🥐" },
+  { id: "baum",       label: "バウムクーヘン", emoji: "🍰" },
+  { id: "senbei",     label: "せんべい",      emoji: "🍘" },
+  { id: "candy",      label: "飴",            emoji: "🍬" },
+  { id: "glutenfree", label: "グルテンフリー", emoji: "🌾" },
+  { id: "vegan",      label: "ヴィーガン",    emoji: "🌿" },
+  { id: "seasonal",   label: "季節限定",      emoji: "🌸" },
+  { id: "gift",       label: "手土産",        emoji: "🎀" },
 ];
 
 const SORT_OPTIONS = [
@@ -103,6 +110,40 @@ function PhotoGrid({ shop }) {
   );
 }
 
+/* ─── フィルター用ヘルパー ──────────────────────────────────── */
+const DAY_NAMES = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
+function todayDayName() { return DAY_NAMES[new Date().getDay()]; }
+
+function isClosedToday(shop) {
+  if (!shop.closed_days?.length) return false;
+  const today = todayDayName();
+  return shop.closed_days.some(d => today.startsWith(d) || d === "祝日");
+}
+
+function isOpenNow(hours) {
+  if (!hours) return null;
+  const m = hours.match(/(\d{1,2}):(\d{2})[〜～\-ー](\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const [, oh, om, ch, cm] = m.map(Number);
+  const cur = new Date().getHours() * 60 + new Date().getMinutes();
+  return cur >= oh * 60 + om && cur < ch * 60 + cm;
+}
+
+function FilterChip({ active, onClick, label, chevron }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer whitespace-nowrap transition-colors"
+      style={active
+        ? { background: "#FF8C00", borderColor: "#FF8C00", color: "white" }
+        : { background: "white", borderColor: "#E5E7EB", color: "#555" }}
+    >
+      {label}
+      {chevron && <ChevronDown size={11} style={{ color: active ? "white" : "#9CA3AF" }} />}
+    </button>
+  );
+}
+
 /* ─── メインコンポーネント ─────────────────────────────────── */
 export default function App() {
   const [shops, setShops]               = useState([]);
@@ -127,6 +168,12 @@ export default function App() {
   const [submitting, setSubmitting]     = useState(false);
   const [routeFilterIds, setRouteFilterIds] = useState(null);
   const [loading, setLoading]           = useState(true);
+  const [filterOpenNow, setFilterOpenNow]       = useState(false);
+  const [filterSkipClosed, setFilterSkipClosed] = useState(false);
+  const [filterInsideGate, setFilterInsideGate] = useState(false);
+  const [filterPayment, setFilterPayment]       = useState("");
+  const [excludeQuery, setExcludeQuery]         = useState("");
+  const [showPaymentMenu, setShowPaymentMenu]   = useState(false);
 
   /* ── データ取得 ──────────────────────────────────────────── */
   useEffect(() => {
@@ -148,24 +195,21 @@ export default function App() {
   useEffect(() => { if (selectedShop) fetchReviews(selectedShop.id); }, [selectedShop]);
 
   async function fetchShops() {
-    // status=approved または未設定（旧データ互換）のみ表示
-    let { data, error } = await supabase.from("shops").select("*")
-      .or("status.eq.approved,status.is.null");
-    // statusカラム未作成の場合は全件取得にフォールバック
-    if (error?.message?.includes("status") || error?.code === "42703") {
-      const res = await supabase.from("shops").select("*");
-      data = res.data; error = res.error;
+    try {
+      // まず全件取得（statusカラム有無に関わらず安全）
+      const { data, error } = await supabase.from("shops").select("*");
+      if (error) throw error;
+      // statusカラムが存在する場合はクライアント側でフィルター
+      const hasStatus = data?.[0] && "status" in data[0];
+      const filtered = hasStatus
+        ? data.filter(s => s.status === "approved" || s.status == null)
+        : data;
+      setShops(filtered ?? []);
+    } catch (err) {
+      console.error("fetchShops error:", err?.message);
+    } finally {
+      setLoading(false);
     }
-    if (error) {
-      if (error.code === "PGRST301" || error.message?.includes("JWT")) {
-        await supabase.auth.signOut();
-        const { data: r } = await supabase.from("shops").select("*");
-        if (r) setShops(r);
-      }
-      setLoading(false); return;
-    }
-    if (data) setShops(data);
-    setLoading(false);
   }
 
   async function fetchAllReviews() {
@@ -248,9 +292,20 @@ export default function App() {
     if (routeFilterIds !== null && !routeFilterIds.has(s.id)) return false;
     if (categoryFilter !== "all" && !s.category?.includes(categoryFilter)) return false;
     if (stationFilter !== "all" && s.station !== stationFilter) return false;
-    if (searchQuery &&
-      !s.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !s.tags?.join("").toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!s.name.toLowerCase().includes(q) && !s.tags?.join("").toLowerCase().includes(q)) return false;
+    }
+    if (excludeQuery) {
+      const eq = excludeQuery.toLowerCase();
+      if (s.name.toLowerCase().includes(eq) ||
+          s.tags?.join("").toLowerCase().includes(eq) ||
+          s.description?.toLowerCase().includes(eq)) return false;
+    }
+    if (filterOpenNow && isOpenNow(s.hours) === false) return false;
+    if (filterSkipClosed && isClosedToday(s)) return false;
+    if (filterInsideGate && !s.is_inside_gate) return false;
+    if (filterPayment && !s.payment_methods?.includes(filterPayment)) return false;
     return true;
   });
 
@@ -277,15 +332,22 @@ export default function App() {
 
   /* ── ショップカード（リスト用） ─────────────────────────── */
   function ShopCard({ shop, rank }) {
-    const isFav = favorites.has(shop.id);
-    const avg   = avgRating(shop.id);
-    const cnt   = reviewCount(shop.id);
+    const isFav   = favorites.has(shop.id);
+    const avg     = avgRating(shop.id);
+    const cnt     = reviewCount(shop.id);
+    const closed  = isClosedToday(shop);
 
     return (
       <div
         onClick={() => openDetail(shop)}
-        className="bg-white border-b border-gray-100 cursor-pointer active:bg-gray-50"
+        className="relative bg-white border-b border-gray-100 cursor-pointer active:bg-gray-50"
+        style={closed ? { opacity: 0.55, background: "#F5F5F5" } : {}}
       >
+        {closed && (
+          <span className="absolute top-3 right-16 z-10 text-[10px] font-bold text-white bg-gray-500 px-2 py-0.5 rounded-full">
+            本日定休
+          </span>
+        )}
         {/* ヘッダー行 */}
         <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-2">
           <RankBadge rank={rank} />
@@ -403,6 +465,9 @@ export default function App() {
               ["営業時間", s.hours || "—"],
               ["価格帯",   s.price_range || "—"],
               ["カテゴリ", s.tags?.join(" / ") || "—"],
+              ["改札",     s.is_inside_gate ? "改札内" : s.is_inside_gate === false ? "改札外" : "—"],
+              ["定休日",   s.closed_days?.length ? s.closed_days.join("・") : "—"],
+              ["決済方法", s.payment_methods?.length ? s.payment_methods.join(" / ") : "—"],
             ].map(([label, value]) => (
               <div key={label} className="bg-gray-50 rounded-lg p-2.5">
                 <div className="text-[10px] text-gray-400 mb-0.5">{label}</div>
@@ -410,6 +475,18 @@ export default function App() {
               </div>
             ))}
           </div>
+          {s.media_mentions?.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-[10px] text-gray-400 mb-1.5">メディア掲載</div>
+              <div className="flex flex-wrap gap-1.5">
+                {s.media_mentions.map((m, i) => (
+                  <span key={i} className="text-[11px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                    {m.name}{m.date ? ` (${m.date})` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {s.description && (
             <p className="text-sm text-gray-600 leading-relaxed mt-3">{s.description}</p>
           )}
@@ -686,19 +763,43 @@ export default function App() {
               <button className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white">
                 <SlidersHorizontal size={14} className="text-gray-600" />
               </button>
-              {[
-                { label: "今から行ける", hasChevron: true },
-                { label: "価格帯",       hasChevron: true },
-                { label: "手作り",       hasChevron: false },
-                { label: "テイクアウト", hasChevron: false },
-                { label: "贈り物向け",   hasChevron: false },
-              ].map(({ label, hasChevron }) => (
-                <button key={label}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-gray-700 bg-white border border-gray-200 cursor-pointer whitespace-nowrap hover:border-gray-400">
-                  {label}
-                  {hasChevron && <ChevronDown size={11} className="text-gray-500" />}
-                </button>
-              ))}
+              <FilterChip active={filterOpenNow}    onClick={() => setFilterOpenNow(o => !o)}    label="今営業中" />
+              <FilterChip active={filterSkipClosed} onClick={() => setFilterSkipClosed(o => !o)} label="定休日除く" />
+              <FilterChip active={filterInsideGate} onClick={() => setFilterInsideGate(o => !o)} label="改札内" />
+              {/* 決済方法ドロップダウン */}
+              <div className="relative flex-shrink-0">
+                <FilterChip
+                  active={!!filterPayment}
+                  onClick={() => setShowPaymentMenu(o => !o)}
+                  label={filterPayment || "決済方法"}
+                  chevron
+                />
+                {showPaymentMenu && (
+                  <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-gray-100 z-50 w-36 overflow-hidden">
+                    {["現金", "カード", "PayPay", "交通系IC"].map(m => (
+                      <button key={m}
+                        onClick={() => { setFilterPayment(filterPayment === m ? "" : m); setShowPaymentMenu(false); }}
+                        className={cn(
+                          "w-full text-left px-4 py-2.5 text-sm cursor-pointer border-none bg-transparent hover:bg-gray-50",
+                          filterPayment === m ? "font-bold" : "text-gray-700"
+                        )}
+                        style={filterPayment === m ? { color: "#FF8C00" } : {}}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* 除外ワード */}
+              <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs bg-white border border-gray-200 min-w-0">
+                <X size={10} className="text-gray-400 flex-shrink-0" />
+                <input
+                  value={excludeQuery}
+                  onChange={e => setExcludeQuery(e.target.value)}
+                  placeholder="除外ワード"
+                  className="bg-transparent outline-none text-xs w-16 text-gray-700 placeholder-gray-400 min-w-0"
+                />
+              </div>
             </div>
           </div>
 
@@ -915,20 +1016,29 @@ export default function App() {
    お店登録モーダル（一般ユーザー用）
 ════════════════════════════════════════════════════════════ */
 const CAT_OPTIONS = [
-  { id: "wagashi",   label: "和菓子",   emoji: "🍡" },
-  { id: "cake",      label: "ケーキ",   emoji: "🎂" },
-  { id: "chocolate", label: "チョコ",   emoji: "🍫" },
-  { id: "donut",     label: "ドーナツ", emoji: "🍩" },
-  { id: "cookie",    label: "クッキー", emoji: "🍪" },
-  { id: "icecream",  label: "アイス",   emoji: "🍦" },
-  { id: "pudding",   label: "プリン",   emoji: "🍮" },
-  { id: "macaron",   label: "マカロン", emoji: "🧁" },
-  { id: "tart",      label: "タルト",   emoji: "🥧" },
-  { id: "gift",      label: "手土産",   emoji: "🎀" },
+  { id: "wagashi",    label: "和菓子",        emoji: "🍡" },
+  { id: "cake",       label: "ケーキ",        emoji: "🎂" },
+  { id: "chocolate",  label: "チョコ",        emoji: "🍫" },
+  { id: "donut",      label: "ドーナツ",      emoji: "🍩" },
+  { id: "cookie",     label: "クッキー",      emoji: "🍪" },
+  { id: "icecream",   label: "アイス",        emoji: "🍦" },
+  { id: "pudding",    label: "プリン",        emoji: "🍮" },
+  { id: "macaron",    label: "マカロン",      emoji: "🧁" },
+  { id: "tart",       label: "タルト",        emoji: "🥧" },
+  { id: "baked",      label: "焼き菓子",      emoji: "🥐" },
+  { id: "baum",       label: "バウムクーヘン", emoji: "🍰" },
+  { id: "senbei",     label: "せんべい",      emoji: "🍘" },
+  { id: "candy",      label: "飴",            emoji: "🍬" },
+  { id: "glutenfree", label: "グルテンフリー", emoji: "🌾" },
+  { id: "vegan",      label: "ヴィーガン",    emoji: "🌿" },
+  { id: "seasonal",   label: "季節限定",      emoji: "🌸" },
+  { id: "gift",       label: "手土産",        emoji: "🎀" },
 ];
+const PAYMENT_OPTIONS = ["現金", "カード", "PayPay", "交通系IC", "QUICPay", "楽天ペイ"];
 const EMPTY_FORM = {
   name: "", station: "", walk_minutes: "", description: "",
   hours: "", price_range: "", emoji: "🍡", tags: "", category: [],
+  is_inside_gate: false, closed_days: "", payment_methods: [],
 };
 const INPUT_CLS = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white box-border";
 const LABEL_CLS = "block text-xs text-gray-500 mb-1";
@@ -955,17 +1065,20 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
     }
     setSaving(true);
     const { error } = await supabase.from("shops").insert({
-      name:         form.name.trim(),
-      station:      form.station.trim(),
-      walk_minutes: parseInt(form.walk_minutes) || 0,
-      description:  form.description.trim(),
-      hours:        form.hours.trim(),
-      price_range:  form.price_range.trim(),
-      emoji:        form.emoji || "🍡",
-      tags:         form.tags ? form.tags.split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean) : [],
-      category:     form.category,
-      status:       "pending",
-      submitted_by: user.id,
+      name:            form.name.trim(),
+      station:         form.station.trim(),
+      walk_minutes:    parseInt(form.walk_minutes) || 0,
+      description:     form.description.trim(),
+      hours:           form.hours.trim(),
+      price_range:     form.price_range.trim(),
+      emoji:           form.emoji || "🍡",
+      tags:            form.tags ? form.tags.split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean) : [],
+      category:        form.category,
+      is_inside_gate:  form.is_inside_gate,
+      closed_days:     form.closed_days ? form.closed_days.split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean) : [],
+      payment_methods: form.payment_methods,
+      status:          "pending",
+      submitted_by:    user.id,
     });
     setSaving(false);
     if (error) { alert("登録に失敗しました: " + error.message); return; }
@@ -1082,6 +1195,47 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
               <input className={INPUT_CLS} value={form.emoji}
                 onChange={e => set("emoji", e.target.value)}
                 placeholder="🍡" style={{ fontSize: 20, width: 80 }} />
+            </div>
+
+            {/* 改札内・定休日 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL_CLS}>定休日（カンマ区切り）</label>
+                <input className={INPUT_CLS} value={form.closed_days}
+                  onChange={e => set("closed_days", e.target.value)}
+                  placeholder="例：月曜日、祝日" />
+              </div>
+              <div className="flex flex-col justify-center">
+                <label className={LABEL_CLS}>場所</label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.is_inside_gate}
+                    onChange={e => set("is_inside_gate", e.target.checked)}
+                    className="w-4 h-4 accent-orange-500" />
+                  <span className="text-sm text-gray-700">改札内</span>
+                </label>
+              </div>
+            </div>
+
+            {/* 決済方法 */}
+            <div>
+              <label className={LABEL_CLS}>決済方法</label>
+              <div className="flex flex-wrap gap-2">
+                {PAYMENT_OPTIONS.map(m => (
+                  <button key={m} type="button"
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      payment_methods: f.payment_methods.includes(m)
+                        ? f.payment_methods.filter(p => p !== m)
+                        : [...f.payment_methods, m],
+                    }))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer"
+                    style={form.payment_methods.includes(m)
+                      ? { background: "#FF8C00", borderColor: "#FF8C00", color: "white" }
+                      : { background: "white", borderColor: "#E5E7EB", color: "#555" }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* タグ */}
