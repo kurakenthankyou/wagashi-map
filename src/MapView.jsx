@@ -70,11 +70,21 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
   const [searching, setSearching] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
 
-  // Build shop position map: use shop.lat/lng directly when available
+  // Build shop position map: use shop.lat/lng directly, fallback to station coords
   const shopPositions = {};
   for (const shop of shops) {
     if (shop.lat && shop.lng) {
       shopPositions[shop.id] = { lat: shop.lat, lng: shop.lng };
+    } else {
+      const stCoords = STATION_COORDS[shop.station] || STATION_COORDS[shop.station?.replace(/駅$/, "") + "駅"];
+      if (stCoords) {
+        // 店舗IDに基づく決定的なオフセット（ピンが重ならないよう約200m以内に散布）
+        const seed = String(shop.id).split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        shopPositions[shop.id] = {
+          lat: stCoords.lat + ((seed % 60) - 30) * 0.00007,
+          lng: stCoords.lng + (((seed * 7) % 60) - 30) * 0.00007,
+        };
+      }
     }
   }
 

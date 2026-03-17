@@ -144,6 +144,31 @@ function FilterChip({ active, onClick, label, chevron }) {
   );
 }
 
+/* ── 写真未登録時の情報表示エリア ───────────────────────── */
+function InfoSection({ shop }) {
+  const idNum = typeof shop.id === "number"
+    ? shop.id
+    : String(shop.id).split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+  const [from, to] = PHOTO_SETS[Math.abs(idNum) % PHOTO_SETS.length][1];
+  return (
+    <div className="flex items-center gap-3 px-4 py-3"
+      style={{ background: `linear-gradient(to right, ${from}55, ${to}22)` }}>
+      <span style={{ fontSize: 38 }}>{shop.emoji || "🍡"}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {shop.tags?.slice(0, 4).map(t => (
+            <span key={t} className="text-[10px] bg-white/80 border border-gray-200 rounded-full px-1.5 py-0.5 text-gray-600">{t}</span>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
+          {shop.hours && <span>🕐 {shop.hours}</span>}
+          {shop.price_range && <span>💰 {shop.price_range}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── メインコンポーネント ─────────────────────────────────── */
 export default function App() {
   const [shops, setShops]               = useState([]);
@@ -359,11 +384,15 @@ export default function App() {
           <RankBadge rank={rank} />
           <div className="flex-1 min-w-0">
             <div className="font-bold text-[15px] text-gray-900 truncate">{shop.name}</div>
-            <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+            <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5 flex-wrap">
               <Navigation size={10} className="text-gray-400" />
               {shop.station.replace(/駅$/, "")}駅 徒歩{shop.walk_minutes}分
-              <span className="text-gray-300">|</span>
-              <span>{shop.tags?.[0] || "スイーツ"}</span>
+              {shop.is_inside_gate != null && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium leading-none"
+                  style={{ background: shop.is_inside_gate ? "#EEF4FF" : "#F5F5F5", color: shop.is_inside_gate ? BLUE : "#888" }}>
+                  {shop.is_inside_gate ? "🚉改札内" : "改札外"}
+                </span>
+              )}
             </div>
           </div>
           {/* 評価 */}
@@ -388,8 +417,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* 3枚写真 */}
-        <PhotoGrid shop={shop} />
+        {/* 情報エリア（写真未登録時） */}
+        <InfoSection shop={shop} />
 
         {/* キャッチコピー */}
         <div className="px-4 py-2.5 text-sm text-gray-600 leading-relaxed">
@@ -409,8 +438,7 @@ export default function App() {
     const idNum  = typeof shop.id === "number"
       ? shop.id
       : String(shop.id).split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-    const set = PHOTO_SETS[Math.abs(idNum) % PHOTO_SETS.length];
-    const [from, to] = set[1];
+    const [from, to] = PHOTO_SETS[Math.abs(idNum) % PHOTO_SETS.length][1];
 
     return (
       <div
@@ -418,16 +446,37 @@ export default function App() {
         className="relative bg-white rounded-xl overflow-hidden cursor-pointer border border-gray-100 active:opacity-75"
         style={closed ? { opacity: 0.55 } : {}}
       >
-        {/* 画像エリア */}
-        <div
-          className="aspect-square flex items-center justify-center"
-          style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
-        >
-          <span style={{ fontSize: 36, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.15))" }}>
-            {shop.emoji || "🍡"}
-          </span>
+        {/* 情報エリア（写真未登録時） */}
+        <div className="w-full flex flex-col p-2"
+          style={{ background: `linear-gradient(135deg, ${from}, ${to})`, minHeight: 90 }}>
+          {/* 改札内外バッジ */}
+          {shop.is_inside_gate != null && (
+            <span className="self-start text-[8px] font-medium px-1 py-0.5 rounded bg-white/70 leading-tight mb-1"
+              style={{ color: shop.is_inside_gate ? BLUE : "#666" }}>
+              {shop.is_inside_gate ? "🚉改札内" : "改札外"}
+            </span>
+          )}
+          {/* 絵文字 */}
+          <div className="flex-1 flex items-center justify-center py-1">
+            <span style={{ fontSize: 26, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.1))" }}>
+              {shop.emoji || "🍡"}
+            </span>
+          </div>
+          {/* 営業時間 */}
+          {shop.hours && (
+            <div className="text-[9px] text-gray-700 truncate leading-tight">{shop.hours}</div>
+          )}
+          {/* タグ */}
+          {shop.tags?.length > 0 && (
+            <div className="flex gap-0.5 mt-0.5 overflow-hidden">
+              {shop.tags.slice(0, 2).map(t => (
+                <span key={t} className="text-[8px] bg-white/60 rounded px-1 text-gray-700 truncate">{t}</span>
+              ))}
+            </div>
+          )}
         </div>
-        {/* 定休バッジ */}
+
+        {/* 本日定休バッジ */}
         {closed && (
           <span className="absolute top-1.5 left-1.5 text-[8px] font-bold text-white bg-gray-500 px-1.5 py-0.5 rounded-full">
             本日定休
@@ -436,16 +485,17 @@ export default function App() {
         {/* ブックマーク */}
         <button
           onClick={(e) => toggleFavorite(e, shop.id)}
-          className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-full bg-white/80 border-none cursor-pointer"
+          className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 border-none cursor-pointer"
         >
-          <Bookmark size={12} fill={isFav ? ACCENT : "none"} color={isFav ? ACCENT : "#9CA3AF"} />
+          <Bookmark size={10} fill={isFav ? ACCENT : "none"} color={isFav ? ACCENT : "#9CA3AF"} />
         </button>
-        {/* テキスト */}
+
+        {/* 店名・駅・評価 */}
         <div className="px-2 py-1.5">
           <div className="text-xs font-bold text-gray-900 truncate leading-tight">{shop.name}</div>
-          <div className="text-[10px] text-gray-400 truncate mt-0.5">
-            {shop.station.replace(/駅$/, "")}駅
-            {avg && <span className="ml-1" style={{ color: ACCENT }}>★{avg}</span>}
+          <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+            <span>{shop.station?.replace(/駅$/, "")}駅</span>
+            {avg && <span style={{ color: ACCENT }}>★{avg}</span>}
           </div>
         </div>
       </div>
@@ -763,55 +813,36 @@ export default function App() {
         /* 探すビュー */
         <div className="flex-1 flex flex-col overflow-hidden">
 
-          {/* ── 地図エリア（約30%） ─────────────────────────── */}
-          <div className="flex-shrink-0 relative" style={{ height: "30vh" }}>
-            {/* Google Map */}
+          {/* ── 地図エリア（ルートパネル含む） ──────────────── */}
+          <div className="flex-shrink-0">
             <MapView
               shops={filteredShops}
               onSelectShop={openDetail}
               onRouteShopsChange={setRouteFilterIds}
-              mapHeight="100%"
+              mapHeight="30vh"
               noRadius
-              hideRoutePanel
               selectedStation={stationFilter}
             />
+          </div>
 
-            {/* カテゴリチップ（地図上に浮かせる） */}
-            <div className="absolute top-2.5 left-0 right-0 px-2.5 flex gap-1.5 overflow-x-auto no-scrollbar pointer-events-none z-10">
+          {/* ── カテゴリチップバー ────────────────────────────── */}
+          <div className="flex-shrink-0 bg-white border-b border-gray-100 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1.5 px-3 py-2">
               {CATEGORIES.map(({ id, label, emoji }) => (
                 <button
                   key={id}
                   onClick={() => setCategoryFilter(id)}
                   className={cn(
-                    "flex-shrink-0 flex items-center gap-1 pl-2 pr-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer border-none pointer-events-auto transition-all",
-                    categoryFilter === id
-                      ? "text-white shadow-lg"
-                      : "bg-white text-gray-700 shadow-md hover:shadow-lg"
+                    "flex-shrink-0 flex items-center gap-1 pl-2 pr-3 py-1 rounded-full text-xs font-semibold cursor-pointer border-none transition-all whitespace-nowrap",
+                    categoryFilter === id ? "text-white" : "bg-gray-100 text-gray-600"
                   )}
-                  style={categoryFilter === id
-                    ? { background: ACCENT, boxShadow: `0 2px 8px ${ACCENT}55` }
-                    : {}}
+                  style={categoryFilter === id ? { background: ACCENT } : {}}
                 >
                   <span>{emoji}</span>
                   {label}
                 </button>
               ))}
             </div>
-
-            {/* ドラッグハンドル */}
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-9 h-1 bg-white/70 rounded-full" />
-
-            {/* ルート検索中バナー */}
-            {routeFilterIds && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white rounded-full px-4 py-1.5 shadow-lg flex items-center gap-2 text-xs font-semibold"
-                style={{ color: ACCENT }}>
-                🗺️ ルート沿い {routeFilterIds.size}件
-                <button onClick={() => setRouteFilterIds(null)}
-                  className="bg-transparent border-none cursor-pointer p-0 ml-1">
-                  <X size={12} className="text-gray-400" />
-                </button>
-              </div>
-            )}
           </div>
 
           {/* ── フィルターバー ───────────────────────────────── */}
@@ -863,13 +894,21 @@ export default function App() {
 
           {/* ── 件数 + ソートボタン ──────────────────────────── */}
           <div className="flex-shrink-0 bg-white flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
-            <div>
-              {routeFilterIds
-                ? <span className="text-sm font-bold text-gray-900" style={{ color: ACCENT }}>ルート沿い</span>
-                : <span className="text-sm font-bold text-gray-900">
-                    {stationFilter !== "all" ? `${stationFilter.replace(/駅$/, "")}駅` : "現在地"}
-                  </span>}
-              <span className="text-sm text-gray-500 ml-1">{sortedShops.length}件</span>
+            <div className="flex items-center gap-2">
+              {routeFilterIds ? (
+                <>
+                  <span className="text-sm font-bold" style={{ color: ACCENT }}>🗺️ ルート沿い</span>
+                  <button onClick={() => setRouteFilterIds(null)}
+                    className="bg-transparent border-none cursor-pointer p-0">
+                    <X size={13} className="text-gray-400" />
+                  </button>
+                </>
+              ) : (
+                <span className="text-sm font-bold text-gray-900">
+                  {stationFilter !== "all" ? `${stationFilter.replace(/駅$/, "")}駅` : "近くのお店"}
+                </span>
+              )}
+              <span className="text-sm text-gray-500">{sortedShops.length}件</span>
             </div>
             {/* ソートボタン */}
             <div className="relative">
