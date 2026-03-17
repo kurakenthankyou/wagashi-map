@@ -177,13 +177,19 @@ export default function App() {
 
   /* ── データ取得 ──────────────────────────────────────────── */
   useEffect(() => {
+    // ショップデータは認証不要のため、認証とは独立して即時取得
+    fetchShops();
+    fetchAllReviews();
+    fetchTimeline();
+
+    // 認証状態の確認（失敗してもデータ取得には影響させない）
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchFavorites(session.user.id);
-      fetchShops();
-      fetchAllReviews();
-      fetchTimeline();
+    }).catch(err => {
+      console.error("getSession error:", err?.message);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchFavorites(session.user.id);
