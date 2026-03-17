@@ -5,7 +5,7 @@ import {
   Search, Menu, MapPin, Bookmark, Clock, MessageSquare,
   ArrowDownUp, ChevronDown, SlidersHorizontal, Navigation,
   Star, Heart, History, LogIn, LogOut, ChevronLeft, X,
-  PlusCircle, Pencil, CheckCircle,
+  PlusCircle, Pencil, CheckCircle, HelpCircle, Send, ChevronRight,
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -144,6 +144,15 @@ function FilterChip({ active, onClick, label, chevron }) {
   );
 }
 
+/* ── カード左ボーダー色（営業中=緑 改札内=青 改札外=橙 定休=灰） */
+function getCardBorder(shop) {
+  if (isClosedToday(shop)) return "inset 3px 0 0 #9CA3AF";
+  if (isOpenNow(shop.hours) === true) return "inset 3px 0 0 #22C55E";
+  if (shop.is_inside_gate === true)  return "inset 3px 0 0 #3B82F6";
+  if (shop.is_inside_gate === false) return "inset 3px 0 0 #F97316";
+  return "none";
+}
+
 /* ── 写真未登録時の情報表示エリア ───────────────────────── */
 function InfoSection({ shop }) {
   const idNum = typeof shop.id === "number"
@@ -196,9 +205,13 @@ export default function App() {
   const [filterOpenNow, setFilterOpenNow]       = useState(false);
   const [filterSkipClosed, setFilterSkipClosed] = useState(false);
   const [filterInsideGate, setFilterInsideGate] = useState(false);
-  const [filterPayment, setFilterPayment]       = useState("");
+  const [filterCashless, setFilterCashless]     = useState(false);
+  const [filterLimited, setFilterLimited]       = useState(false);
   const [excludeQuery, setExcludeQuery]         = useState("");
-  const [showPaymentMenu, setShowPaymentMenu]   = useState(false);
+  const [inquiries, setInquiries]               = useState([]);
+  const [inqSubject, setInqSubject]             = useState("");
+  const [inqContent, setInqContent]             = useState("");
+  const [submittingInq, setSubmittingInq]       = useState(false);
 
   /* ── データ取得 ──────────────────────────────────────────── */
   useEffect(() => {
@@ -206,6 +219,7 @@ export default function App() {
     fetchShops();
     fetchAllReviews();
     fetchTimeline();
+    fetchInquiries();
 
     // 認証状態の確認（失敗してもデータ取得には影響させない）
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -263,6 +277,26 @@ export default function App() {
     const { data } = await supabase.from("reviews").select("*, shops(name, emoji)")
       .order("created_at", { ascending: false }).limit(50);
     if (data) setTimeline(data);
+  }
+
+  async function fetchInquiries() {
+    const { data } = await supabase.from("inquiries").select("*")
+      .order("created_at", { ascending: false });
+    if (data) setInquiries(data);
+  }
+
+  async function submitInquiry() {
+    if (!user) { loginWithGoogle(); return; }
+    if (!inqSubject.trim() || !inqContent.trim()) { alert("件名と内容を入力してください"); return; }
+    setSubmittingInq(true);
+    const { error } = await supabase.from("inquiries").insert({
+      user_id: user.id,
+      user_name: user.user_metadata?.full_name || "ユーザー",
+      subject: inqSubject.trim(),
+      content: inqContent.trim(),
+    });
+    if (!error) { setInqSubject(""); setInqContent(""); fetchInquiries(); }
+    setSubmittingInq(false);
   }
 
   /* ── 認証 ────────────────────────────────────────────────── */
@@ -336,7 +370,8 @@ export default function App() {
     if (filterOpenNow && isOpenNow(s.hours) === false) return false;
     if (filterSkipClosed && isClosedToday(s)) return false;
     if (filterInsideGate && !s.is_inside_gate) return false;
-    if (filterPayment && !s.payment_methods?.includes(filterPayment)) return false;
+    if (filterCashless && !s.payment_methods?.some(m => m !== "現金")) return false;
+    if (filterLimited && !s.is_limited_period) return false;
     return true;
   });
 
@@ -351,10 +386,11 @@ export default function App() {
 
   /* ── タブ定義 ────────────────────────────────────────────── */
   const TABS = [
-    { id: "explore",   label: "探す",       Icon: Search,        badge: 0 },
-    { id: "favorites", label: "お気に入り", Icon: Bookmark,      badge: favorites.size },
-    { id: "timeline",  label: "タイムライン", Icon: MessageSquare, badge: 0 },
-    { id: "history",   label: "閲覧履歴",   Icon: History,       badge: history.length },
+    { id: "explore",   label: "探す",        Icon: Search,        badge: 0 },
+    { id: "favorites", label: "お気に入り",  Icon: Bookmark,      badge: favorites.size },
+    { id: "timeline",  label: "口コミ",      Icon: MessageSquare, badge: 0 },
+    { id: "inquiry",   label: "問い合わせ",  Icon: HelpCircle,    badge: 0 },
+    { id: "history",   label: "履歴",        Icon: History,       badge: history.length },
   ];
 
   /* ════════════════════════════════════════════════════════════
@@ -372,7 +408,7 @@ export default function App() {
       <div
         onClick={() => openDetail(shop)}
         className="relative bg-white border-b border-gray-100 cursor-pointer active:bg-gray-50"
-        style={closed ? { opacity: 0.55, background: "#F5F5F5" } : {}}
+        style={{ boxShadow: getCardBorder(shop), ...(closed ? { opacity: 0.55, background: "#F5F5F5" } : {}) }}
       >
         {closed && (
           <span className="absolute top-3 right-16 z-10 text-[10px] font-bold text-white bg-gray-500 px-2 py-0.5 rounded-full">
@@ -444,7 +480,7 @@ export default function App() {
       <div
         onClick={() => openDetail(shop)}
         className="relative bg-white rounded-xl overflow-hidden cursor-pointer border border-gray-100 active:opacity-75"
-        style={closed ? { opacity: 0.55 } : {}}
+        style={{ boxShadow: getCardBorder(shop), ...(closed ? { opacity: 0.55 } : {}) }}
       >
         {/* 情報エリア（写真未登録時） */}
         <div className="w-full flex flex-col p-2"
@@ -665,6 +701,39 @@ export default function App() {
 
   /* ── タイムラインビュー ──────────────────────────────────── */
   function TimelineView() {
+    const [expandedId, setExpandedId] = useState(null);
+    const [loadedComments, setLoadedComments] = useState({});
+    const [commentTexts, setCommentTexts] = useState({});
+    const [submittingComment, setSubmittingComment] = useState(false);
+
+    async function loadComments(reviewId) {
+      const { data } = await supabase.from("review_comments")
+        .select("*").eq("review_id", reviewId).order("created_at");
+      setLoadedComments(prev => ({ ...prev, [reviewId]: data || [] }));
+    }
+
+    async function postComment(reviewId) {
+      if (!user) { loginWithGoogle(); return; }
+      const text = commentTexts[reviewId]?.trim();
+      if (!text) return;
+      setSubmittingComment(true);
+      await supabase.from("review_comments").insert({
+        review_id: reviewId,
+        user_id: user.id,
+        user_name: user.user_metadata?.full_name || "ユーザー",
+        content: text,
+      });
+      setCommentTexts(prev => ({ ...prev, [reviewId]: "" }));
+      await loadComments(reviewId);
+      setSubmittingComment(false);
+    }
+
+    function toggleExpand(id) {
+      const next = expandedId === id ? null : id;
+      setExpandedId(next);
+      if (next && !loadedComments[next]) loadComments(next);
+    }
+
     if (timeline.length === 0) return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-400">
         <MessageSquare size={40} className="mb-3 opacity-30" />
@@ -689,7 +758,45 @@ export default function App() {
                   <span className="text-sm font-bold text-gray-900">{r.shops?.name}</span>
                   <StarRow score={r.rating} size={10} />
                 </div>
-                <p className="text-sm text-gray-600 leading-relaxed">{r.comment}</p>
+                <p className="text-sm text-gray-600 leading-relaxed mb-2">{r.comment}</p>
+                {/* コメントトグル */}
+                <button
+                  onClick={() => toggleExpand(r.id)}
+                  className="flex items-center gap-1 text-[11px] text-gray-400 bg-transparent border-none cursor-pointer p-0"
+                >
+                  <MessageSquare size={11} />
+                  {expandedId === r.id ? "閉じる" : `コメント${loadedComments[r.id]?.length ? ` (${loadedComments[r.id].length})` : ""}`}
+                </button>
+                {expandedId === r.id && (
+                  <div className="mt-2 pl-3 border-l-2 border-gray-100">
+                    {(loadedComments[r.id] || []).map(c => (
+                      <div key={c.id} className="mb-2">
+                        <span className="text-[11px] font-semibold text-gray-700 mr-1">{c.user_name}</span>
+                        <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleDateString("ja-JP")}</span>
+                        <p className="text-xs text-gray-600 mt-0.5">{c.content}</p>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        value={commentTexts[r.id] || ""}
+                        onChange={e => setCommentTexts(prev => ({ ...prev, [r.id]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && postComment(r.id)}
+                        placeholder={user ? "コメントを入力…" : "ログインしてコメント"}
+                        readOnly={!user}
+                        onClick={() => { if (!user) loginWithGoogle(); }}
+                        className="flex-1 text-xs border border-gray-200 rounded-full px-3 py-1.5 outline-none bg-gray-50"
+                      />
+                      <button
+                        onClick={() => postComment(r.id)}
+                        disabled={submittingComment || !commentTexts[r.id]?.trim()}
+                        className="w-7 h-7 rounded-full flex items-center justify-center border-none cursor-pointer flex-shrink-0"
+                        style={{ background: ACCENT, opacity: !commentTexts[r.id]?.trim() ? 0.4 : 1 }}
+                      >
+                        <Send size={12} color="white" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -727,6 +834,160 @@ export default function App() {
     return (
       <div className="bg-white divide-y divide-gray-100">
         {history.map((shop, i) => <ShopCard key={shop.id} shop={shop} rank={i + 1} />)}
+      </div>
+    );
+  }
+
+  /* ── お問い合わせ掲示板ビュー ────────────────────────────── */
+  function InquiryView() {
+    const [expandedId, setExpandedId] = useState(null);
+    const [replies, setReplies] = useState({});
+    const [replyTexts, setReplyTexts] = useState({});
+    const [submittingReply, setSubmittingReply] = useState(false);
+
+    async function loadReplies(inqId) {
+      const { data } = await supabase.from("inquiry_replies")
+        .select("*").eq("inquiry_id", inqId).order("created_at");
+      setReplies(prev => ({ ...prev, [inqId]: data || [] }));
+    }
+
+    async function postReply(inqId) {
+      if (!user) { loginWithGoogle(); return; }
+      const text = replyTexts[inqId]?.trim();
+      if (!text) return;
+      setSubmittingReply(true);
+      await supabase.from("inquiry_replies").insert({
+        inquiry_id: inqId,
+        user_id: user.id,
+        user_name: user.user_metadata?.full_name || "ユーザー",
+        content: text,
+      });
+      setReplyTexts(prev => ({ ...prev, [inqId]: "" }));
+      await loadReplies(inqId);
+      setSubmittingReply(false);
+    }
+
+    function toggleExpand(id) {
+      const next = expandedId === id ? null : id;
+      setExpandedId(next);
+      if (next && !replies[next]) loadReplies(next);
+    }
+
+    return (
+      <div>
+        {/* 新規投稿フォーム */}
+        <div className="bg-white px-4 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-800 mb-3">新規投稿</h2>
+          {!user ? (
+            <button onClick={loginWithGoogle}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 bg-gray-50 cursor-pointer">
+              <LogIn size={14} /> Googleログインして投稿する
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                value={inqSubject}
+                onChange={e => setInqSubject(e.target.value)}
+                placeholder="件名"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+              />
+              <textarea
+                value={inqContent}
+                onChange={e => setInqContent(e.target.value)}
+                placeholder="内容を入力してください"
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-none"
+              />
+              <button
+                onClick={submitInquiry}
+                disabled={submittingInq || !inqSubject.trim() || !inqContent.trim()}
+                className="self-end flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white border-none cursor-pointer"
+                style={{ background: ACCENT, opacity: !inqSubject.trim() || !inqContent.trim() ? 0.5 : 1 }}
+              >
+                <Send size={13} /> 送信
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 投稿一覧 */}
+        {inquiries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+            <HelpCircle size={36} className="mb-2 opacity-30" />
+            <p className="text-sm">まだ投稿がありません</p>
+          </div>
+        ) : (
+          <div className="bg-white divide-y divide-gray-100">
+            {inquiries.map(inq => (
+              <div key={inq.id}>
+                {/* 投稿ヘッダー */}
+                <button
+                  onClick={() => toggleExpand(inq.id)}
+                  className="w-full text-left px-4 py-3.5 flex items-start gap-3 bg-transparent border-none cursor-pointer hover:bg-gray-50"
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                    style={{ background: ACCENT }}>
+                    {(inq.user_name || "?")[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-xs font-semibold text-gray-700">{inq.user_name}</span>
+                      <span className="text-[10px] text-gray-400">{new Date(inq.created_at).toLocaleDateString("ja-JP")}</span>
+                    </div>
+                    <div className="text-sm font-bold text-gray-900 truncate">{inq.subject}</div>
+                    {expandedId !== inq.id && (
+                      <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{inq.content}</div>
+                    )}
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1"
+                    style={{ transform: expandedId === inq.id ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+                </button>
+
+                {/* 展開コンテンツ */}
+                {expandedId === inq.id && (
+                  <div className="px-4 pb-4 bg-gray-50">
+                    <p className="text-sm text-gray-700 leading-relaxed py-2 border-b border-gray-200 mb-3">{inq.content}</p>
+                    {/* 返信一覧 */}
+                    {(replies[inq.id] || []).map(rep => (
+                      <div key={rep.id} className="flex items-start gap-2 mb-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 flex-shrink-0">
+                          {(rep.user_name || "?")[0]}
+                        </div>
+                        <div className="flex-1 min-w-0 bg-white rounded-xl px-3 py-2 border border-gray-100">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[11px] font-semibold text-gray-700">{rep.user_name}</span>
+                            <span className="text-[10px] text-gray-400">{new Date(rep.created_at).toLocaleDateString("ja-JP")}</span>
+                          </div>
+                          <p className="text-xs text-gray-600">{rep.content}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {/* 返信入力 */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        value={replyTexts[inq.id] || ""}
+                        onChange={e => setReplyTexts(prev => ({ ...prev, [inq.id]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && postReply(inq.id)}
+                        placeholder={user ? "返信を入力…" : "ログインして返信"}
+                        readOnly={!user}
+                        onClick={() => { if (!user) loginWithGoogle(); }}
+                        className="flex-1 text-xs border border-gray-200 rounded-full px-3 py-1.5 outline-none bg-white"
+                      />
+                      <button
+                        onClick={() => postReply(inq.id)}
+                        disabled={submittingReply || !replyTexts[inq.id]?.trim()}
+                        className="w-7 h-7 rounded-full flex items-center justify-center border-none cursor-pointer flex-shrink-0"
+                        style={{ background: ACCENT, opacity: !replyTexts[inq.id]?.trim() ? 0.4 : 1 }}
+                      >
+                        <Send size={12} color="white" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -802,10 +1063,11 @@ export default function App() {
         </div>
 
       ) : view !== "explore" ? (
-        /* お気に入り / タイムライン / 閲覧履歴 */
+        /* お気に入り / タイムライン / 問い合わせ / 閲覧履歴 */
         <div className="flex-1 overflow-y-auto bg-gray-50">
           {view === "favorites" ? <FavoritesView />
            : view === "timeline" ? <TimelineView />
+           : view === "inquiry"  ? <InquiryView />
            : <HistoryView />}
         </div>
 
@@ -855,30 +1117,8 @@ export default function App() {
               <FilterChip active={filterOpenNow}    onClick={() => setFilterOpenNow(o => !o)}    label="今営業中" />
               <FilterChip active={filterSkipClosed} onClick={() => setFilterSkipClosed(o => !o)} label="定休日除く" />
               <FilterChip active={filterInsideGate} onClick={() => setFilterInsideGate(o => !o)} label="改札内" />
-              {/* 決済方法ドロップダウン */}
-              <div className="relative flex-shrink-0">
-                <FilterChip
-                  active={!!filterPayment}
-                  onClick={() => setShowPaymentMenu(o => !o)}
-                  label={filterPayment || "決済方法"}
-                  chevron
-                />
-                {showPaymentMenu && (
-                  <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-gray-100 z-50 w-36 overflow-hidden">
-                    {["現金", "カード", "PayPay", "交通系IC"].map(m => (
-                      <button key={m}
-                        onClick={() => { setFilterPayment(filterPayment === m ? "" : m); setShowPaymentMenu(false); }}
-                        className={cn(
-                          "w-full text-left px-4 py-2.5 text-sm cursor-pointer border-none bg-transparent hover:bg-gray-50",
-                          filterPayment === m ? "font-bold" : "text-gray-700"
-                        )}
-                        style={filterPayment === m ? { color: "#FF8C00" } : {}}>
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <FilterChip active={filterCashless}   onClick={() => setFilterCashless(o => !o)}   label="現金以外OK" />
+              <FilterChip active={filterLimited}    onClick={() => setFilterLimited(o => !o)}     label="期間限定" />
               {/* 除外ワード */}
               <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs bg-white border border-gray-200 min-w-0">
                 <X size={10} className="text-gray-400 flex-shrink-0" />
