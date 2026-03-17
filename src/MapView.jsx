@@ -1,7 +1,40 @@
-import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from "@react-google-maps/api";
-import { useState, useRef } from "react";
+import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer, Circle } from "@react-google-maps/api";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const TOKYO_CENTER = { lat: 35.6812, lng: 139.7671 };
+
+const STATION_COORDS = {
+  "新宿":   { lat: 35.6896, lng: 139.7006 },
+  "新宿駅": { lat: 35.6896, lng: 139.7006 },
+  "渋谷":   { lat: 35.6580, lng: 139.7016 },
+  "渋谷駅": { lat: 35.6580, lng: 139.7016 },
+  "池袋":   { lat: 35.7295, lng: 139.7109 },
+  "池袋駅": { lat: 35.7295, lng: 139.7109 },
+  "銀座":   { lat: 35.6717, lng: 139.7650 },
+  "銀座駅": { lat: 35.6717, lng: 139.7650 },
+  "浅草":   { lat: 35.7147, lng: 139.7966 },
+  "浅草駅": { lat: 35.7147, lng: 139.7966 },
+  "東京":   { lat: 35.6812, lng: 139.7671 },
+  "東京駅": { lat: 35.6812, lng: 139.7671 },
+  "上野":   { lat: 35.7141, lng: 139.7774 },
+  "上野駅": { lat: 35.7141, lng: 139.7774 },
+  "原宿":   { lat: 35.6702, lng: 139.7027 },
+  "原宿駅": { lat: 35.6702, lng: 139.7027 },
+  "恵比寿": { lat: 35.6469, lng: 139.7101 },
+  "恵比寿駅": { lat: 35.6469, lng: 139.7101 },
+  "表参道": { lat: 35.6651, lng: 139.7126 },
+  "表参道駅": { lat: 35.6651, lng: 139.7126 },
+  "六本木": { lat: 35.6628, lng: 139.7314 },
+  "六本木駅": { lat: 35.6628, lng: 139.7314 },
+  "秋葉原": { lat: 35.7022, lng: 139.7742 },
+  "秋葉原駅": { lat: 35.7022, lng: 139.7742 },
+  "品川":   { lat: 35.6284, lng: 139.7387 },
+  "品川駅": { lat: 35.6284, lng: 139.7387 },
+  "横浜":   { lat: 35.4658, lng: 139.6225 },
+  "横浜駅": { lat: 35.4658, lng: 139.6225 },
+  "鎌倉":   { lat: 35.3194, lng: 139.5467 },
+  "鎌倉駅": { lat: 35.3194, lng: 139.5467 },
+};
 
 function getContainerStyle(mapHeight, noRadius) {
   return {
@@ -9,20 +42,6 @@ function getContainerStyle(mapHeight, noRadius) {
     height: mapHeight || "400px",
     borderRadius: noRadius ? 0 : "12px",
   };
-}
-
-function useGeocode(apiKey) {
-  const geocode = async (address) => {
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address + " 東京")}&key=${apiKey}&language=ja`
-    );
-    const data = await res.json();
-    if (data.results?.[0]) {
-      return data.results[0].geometry.location;
-    }
-    return null;
-  };
-  return geocode;
 }
 
 function haversine(lat1, lng1, lat2, lng2) {
@@ -35,12 +54,10 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHeight, noRadius, hideRoutePanel }) {
+export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHeight, noRadius, hideRoutePanel, selectedStation }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-  const [markers, setMarkers] = useState({});
-  const markersRef = useRef({});
+  const mapRef = useRef(null);
   const [selected, setSelected] = useState(null);
-  const geocode = useGeocode(apiKey);
 
   // Route state
   const [routeOpen, setRouteOpen] = useState(false);
@@ -51,30 +68,45 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
   const [localRouteShopIds, setLocalRouteShopIds] = useState(null);
   const [gettingLocation, setGettingLocation] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
 
-  async function handleMapLoad() {
-    const targets = shops.slice(0, 20);
-    const results = {};
-    for (const shop of targets) {
-      if (!markersRef.current[shop.id]) {
-        const pos = await geocode(shop.station);
-        if (pos) {
-          results[shop.id] = {
-            lat: pos.lat + (Math.random() - 0.5) * 0.003,
-            lng: pos.lng + (Math.random() - 0.5) * 0.003,
-          };
-        }
-      }
+  // Build shop position map: use shop.lat/lng directly when available
+  const shopPositions = {};
+  for (const shop of shops) {
+    if (shop.lat && shop.lng) {
+      shopPositions[shop.id] = { lat: shop.lat, lng: shop.lng };
     }
-    markersRef.current = { ...markersRef.current, ...results };
-    setMarkers((prev) => ({ ...prev, ...results }));
   }
+
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+    // Get current location for blue dot
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {}
+      );
+    }
+  }, []);
+
+  // Pan map when selectedStation changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!selectedStation || selectedStation === "all") return;
+    const coords = STATION_COORDS[selectedStation];
+    if (coords) {
+      mapRef.current.panTo(coords);
+      mapRef.current.setZoom(15);
+    }
+  }, [selectedStation]);
 
   function getCurrentLocation() {
     setGettingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setOrigin(loc);
+        setCurrentLocation(loc);
         setOriginLabel("現在地");
         setGettingLocation(false);
       },
@@ -85,34 +117,12 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
     );
   }
 
-  async function geocodeAllShops() {
-    const results = {};
-    for (const shop of shops) {
-      if (!markersRef.current[shop.id]) {
-        const pos = await geocode(shop.station);
-        if (pos) {
-          results[shop.id] = {
-            lat: pos.lat + (Math.random() - 0.5) * 0.003,
-            lng: pos.lng + (Math.random() - 0.5) * 0.003,
-          };
-        }
-      }
-    }
-    if (Object.keys(results).length > 0) {
-      markersRef.current = { ...markersRef.current, ...results };
-      setMarkers((prev) => ({ ...prev, ...results }));
-    }
-  }
-
   async function searchRoute() {
     if (!origin || !destination.trim()) {
       alert("現在地と目的地を設定してください");
       return;
     }
     setSearching(true);
-
-    // 未ジオコーディングの店舗を補完
-    await geocodeAllShops();
 
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route(
@@ -124,7 +134,6 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
       },
       (result, status) => {
         if (status !== "OK") {
-          // TRANSIT失敗時はDRIVINGでリトライ
           directionsService.route(
             {
               origin: new window.google.maps.LatLng(origin.lat, origin.lng),
@@ -150,7 +159,6 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
   function applyRouteFilter(result) {
     setDirectionsResult(result);
 
-    // ルート上の全ポイントを収集
     const routePoints = [];
     result.routes[0].legs.forEach((leg) => {
       leg.steps.forEach((step) => {
@@ -158,11 +166,10 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
       });
     });
 
-    // ルートから1.5km以内の店舗を抽出
     const THRESHOLD = 1500;
     const nearbyIds = new Set();
     for (const shop of shops) {
-      const pos = markersRef.current[shop.id];
+      const pos = shopPositions[shop.id];
       if (!pos) continue;
       for (const pt of routePoints) {
         if (haversine(pos.lat, pos.lng, pt.lat(), pt.lng()) <= THRESHOLD) {
@@ -193,9 +200,8 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
 
   const displayShops = localRouteShopIds
     ? shops.filter((s) => localRouteShopIds.has(s.id))
-    : shops.slice(0, 20);
+    : shops.slice(0, 50);
 
-  // APIキー未設定時はプレースホルダーを表示
   if (!apiKey) {
     return (
       <div style={{
@@ -329,7 +335,7 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
         mapContainerStyle={getContainerStyle(mapHeight, noRadius)}
         center={TOKYO_CENTER}
         zoom={12}
-        onLoad={handleMapLoad}
+        onLoad={onMapLoad}
         options={{
           streetViewControl: false,
           mapTypeControl: false,
@@ -343,8 +349,37 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
           />
         )}
 
+        {/* 現在地の青いドット */}
+        {currentLocation && (
+          <>
+            <Circle
+              center={currentLocation}
+              radius={80}
+              options={{
+                fillColor: "#4285F4",
+                fillOpacity: 0.25,
+                strokeColor: "#4285F4",
+                strokeOpacity: 0.6,
+                strokeWeight: 1,
+              }}
+            />
+            <Marker
+              position={currentLocation}
+              icon={{
+                path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                scale: 8,
+                fillColor: "#4285F4",
+                fillOpacity: 1,
+                strokeColor: "white",
+                strokeWeight: 2,
+              }}
+            />
+          </>
+        )}
+
+        {/* お店のピン */}
         {displayShops.map((shop) => {
-          const pos = markers[shop.id];
+          const pos = shopPositions[shop.id];
           if (!pos) return null;
           return (
             <Marker
@@ -360,13 +395,13 @@ export default function MapView({ shops, onSelectShop, onRouteShopsChange, mapHe
           );
         })}
 
-        {selected && markers[selected] &&
+        {selected && shopPositions[selected] &&
           (() => {
             const shop = shops.find((s) => s.id === selected);
             if (!shop) return null;
             return (
               <InfoWindow
-                position={markers[selected]}
+                position={shopPositions[selected]}
                 onCloseClick={() => setSelected(null)}
               >
                 <div style={{ maxWidth: 220, fontFamily: "sans-serif" }}>

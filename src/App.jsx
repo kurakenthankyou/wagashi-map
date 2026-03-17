@@ -401,6 +401,57 @@ export default function App() {
     );
   }
 
+  /* ── グリッドショップカード（3列用） ───────────────────── */
+  function GridShopCard({ shop }) {
+    const isFav  = favorites.has(shop.id);
+    const avg    = avgRating(shop.id);
+    const closed = isClosedToday(shop);
+    const idNum  = typeof shop.id === "number"
+      ? shop.id
+      : String(shop.id).split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+    const set = PHOTO_SETS[Math.abs(idNum) % PHOTO_SETS.length];
+    const [from, to] = set[1];
+
+    return (
+      <div
+        onClick={() => openDetail(shop)}
+        className="relative bg-white rounded-xl overflow-hidden cursor-pointer border border-gray-100 active:opacity-75"
+        style={closed ? { opacity: 0.55 } : {}}
+      >
+        {/* 画像エリア */}
+        <div
+          className="aspect-square flex items-center justify-center"
+          style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
+        >
+          <span style={{ fontSize: 36, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.15))" }}>
+            {shop.emoji || "🍡"}
+          </span>
+        </div>
+        {/* 定休バッジ */}
+        {closed && (
+          <span className="absolute top-1.5 left-1.5 text-[8px] font-bold text-white bg-gray-500 px-1.5 py-0.5 rounded-full">
+            本日定休
+          </span>
+        )}
+        {/* ブックマーク */}
+        <button
+          onClick={(e) => toggleFavorite(e, shop.id)}
+          className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-full bg-white/80 border-none cursor-pointer"
+        >
+          <Bookmark size={12} fill={isFav ? ACCENT : "none"} color={isFav ? ACCENT : "#9CA3AF"} />
+        </button>
+        {/* テキスト */}
+        <div className="px-2 py-1.5">
+          <div className="text-xs font-bold text-gray-900 truncate leading-tight">{shop.name}</div>
+          <div className="text-[10px] text-gray-400 truncate mt-0.5">
+            {shop.station.replace(/駅$/, "")}駅
+            {avg && <span className="ml-1" style={{ color: ACCENT }}>★{avg}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ── 詳細ページ ──────────────────────────────────────────── */
   function DetailView() {
     const s         = selectedShop;
@@ -712,8 +763,8 @@ export default function App() {
         /* 探すビュー */
         <div className="flex-1 flex flex-col overflow-hidden">
 
-          {/* ── 地図エリア（約42%） ─────────────────────────── */}
-          <div className="flex-shrink-0 relative" style={{ height: "42vh" }}>
+          {/* ── 地図エリア（約30%） ─────────────────────────── */}
+          <div className="flex-shrink-0 relative" style={{ height: "30vh" }}>
             {/* Google Map */}
             <MapView
               shops={filteredShops}
@@ -722,6 +773,7 @@ export default function App() {
               mapHeight="100%"
               noRadius
               hideRoutePanel
+              selectedStation={stationFilter}
             />
 
             {/* カテゴリチップ（地図上に浮かせる） */}
@@ -846,8 +898,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── ショップリスト（スクロール） ─────────────────── */}
-          <div className="flex-1 overflow-y-auto bg-white" onClick={() => setShowSortMenu(false)}>
+          {/* ── ショップグリッド（3列スクロール） ───────────── */}
+          <div className="flex-1 overflow-y-auto bg-gray-50" onClick={() => setShowSortMenu(false)}>
             {loading ? (
               <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
                 読み込み中...
@@ -857,10 +909,13 @@ export default function App() {
                 <span className="text-4xl mb-3">🔍</span>
                 <p className="text-sm">条件に合うお店が見つかりませんでした</p>
               </div>
-            ) : sortedShops.map((shop, i) => (
-              <ShopCard key={shop.id} shop={shop} rank={i + 1} />
-            ))}
-            {/* 下部余白 */}
+            ) : (
+              <div className="grid grid-cols-3 gap-2 p-2">
+                {sortedShops.map((shop) => (
+                  <GridShopCard key={shop.id} shop={shop} />
+                ))}
+              </div>
+            )}
             <div className="h-4" />
           </div>
         </div>
