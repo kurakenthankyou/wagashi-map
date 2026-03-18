@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { supabase } from "./supabase";
 import MapView from "./MapView";
 import {
@@ -200,7 +200,356 @@ function InfoSection({ shop }) {
   );
 }
 
-/* ─── メインコンポーネント ─────────────────────────────────── */
+/* ── テキストエリア自動リサイズ（共通） ───────────────────────────── */
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+/* ── 詳細ページ（DetailView） ─────────────────────────────────────── */
+function DetailView({
+  shop,
+  user,
+  favorites,
+  reviews,
+  avgRating,
+  toggleFavorite,
+  loginWithGoogle,
+  onBack,
+  refreshReviews,
+  setShowEditModal,
+}) {
+  const s = shop;
+  const shopRevs = reviews.filter(r => r.shop_id === s.id);
+  const avg = avgRating(s.id);
+  const isFav = favorites.has(s.id);
+
+  const [pendingRating, setPendingRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [editingReviewText, setEditingReviewText] = useState("");
+  const [editingReviewRating, setEditingReviewRating] = useState(0);
+  const [editingReviewSaving, setEditingReviewSaving] = useState(false);
+
+  const reviewTextareaRef = useRef(null);
+  const editTextareaRef = useRef(null);
+  const reviewComposingRef = useRef(false);
+  const editComposingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editingReviewId) return;
+    setTimeout(() => editTextareaRef.current?.focus(), 0);
+  }, [editingReviewId]);
+
+  useLayoutEffect(() => {
+    if (reviewComposingRef.current) return;
+    autoResizeTextarea(reviewTextareaRef.current);
+  }, [reviewText]);
+
+  useLayoutEffect(() => {
+    if (editComposingRef.current) return;
+    autoResizeTextarea(editTextareaRef.current);
+  }, [editingReviewText]);
+
+  async function submitReview() {
+    if (!user) { loginWithGoogle(); return; }
+    if (!pendingRating) { alert("星評価を選んでください"); return; }
+    if (!reviewText.trim()) { alert("コメントを入力してください"); return; }
+    setSubmitting(true);
+    const { error } = await supabase.from("reviews").insert({
+      shop_id: s.id,
+      user_id: user.id,
+      user_name: user.user_metadata?.full_name || "ユーザー",
+      rating: pendingRating,
+      comment: reviewText.trim(),
+    });
+    if (!error) {
+      setPendingRating(0);
+      setReviewText("");
+      await refreshReviews?.(s.id);
+    }
+    setSubmitting(false);
+  }
+
+  async function saveEditedReview() {
+    if (!editingReviewId) return;
+    if (!user) { loginWithGoogle(); return; }
+    if (!editingReviewText.trim()) { alert("コメントを入力してください"); return; }
+    setEditingReviewSaving(true);
+    const { data, error } = await supabase.from("reviews").update({
+      comment: editingReviewText.trim(),
+      rating: editingReviewRating,
+    }).eq("id", editingReviewId).eq("user_id", user.id).select("id");
+    if (error) {
+      console.error("saveEditedReview failed:", error);
+      alert("口コミの保存に失敗しました。");
+      setEditingReviewSaving(false);
+      return;
+    }
+    if (!data?.length) {
+      alert("口コミの保存に失敗しました。権限がありません。");
+      setEditingReviewSaving(false);
+      return;
+    }
+    setEditingReviewId(null);
+    setEditingReviewText("");
+    setEditingReviewRating(0);
+    await refreshReviews?.(s.id);
+    setEditingReviewSaving(false);
+  }
+
+  function startEditReview(review) {
+    setEditingReviewId(review.id);
+    setEditingReviewText(review.comment || "");
+    setEditingReviewRating(review.rating || 0);
+  }
+
+  function cancelEditReview() {
+    setEditingReviewId(null);
+    setEditingReviewText("");
+    setEditingReviewRating(0);
+  }
+
+  async function deleteReview(reviewId) {
+    if (!user) { loginWithGoogle(); return; }
+    if (!window.confirm("この口コミを削除しますか？")) return;
+    const { data, error } = await supabase.from("reviews").delete()
+      .eq("id", reviewId).eq("user_id", user.id).select("id");
+    if (error) {
+      console.error("deleteReview failed:", error);
+      alert("口コミの削除に失敗しました。");
+      return;
+    }
+    if (!data?.length) {
+      alert("口コミの削除に失敗しました。権限がありません。");
+      return;
+    }
+    await refreshReviews?.(s.id);
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto pb-10" style={{ fontFamily: FONT }}>
+      {/* ヒーロー写真 */}
+      <div className="relative" style={{ height: 200 }}>
+        <PhotoGrid shop={s} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span style={{ fontSize: 64, filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.2))" }}>
+            {s.emoji || "🍡"}
+          </span>
+        </div>
+        <button
+          onClick={onBack}
+          className="absolute top-3 left-3 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow cursor-pointer border-none"
+        >
+          <ChevronLeft size={18} className="text-gray-700" />
+        </button>
+        <button
+          onClick={(e) => toggleFavorite(e, s.id)}
+          className="absolute top-3 right-3 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow cursor-pointer border-none"
+        >
+          <Bookmark size={18} fill={isFav ? ACCENT : "none"} color={isFav ? ACCENT : "#666"} />
+        </button>
+      </div>
+
+      {/* 店名・評価 */}
+      <div className="bg-white px-5 py-4 border-b border-gray-100">
+        <div className="flex items-start justify-between gap-2">
+          <h1 className="text-xl font-black text-gray-900 mb-1.5">{s.name}</h1>
+          {/* オーナーのみ編集ボタン表示 */}
+          {user && s.submitted_by === user.id && (
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 bg-white cursor-pointer"
+            >
+              <Pencil size={12} />編集
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <StarRow score={parseFloat(avg || 0)} size={16} />
+          {avg ? (
+            <>
+              <span className="text-2xl font-black" style={{ color: ACCENT }}>{avg}</span>
+              <span className="text-xs text-gray-400">（{shopRevs.length}件）</span>
+            </>
+          ) : <span className="text-sm text-gray-400">まだ評価なし</span>}
+        </div>
+        <div className="flex items-center gap-1 mt-2 text-sm text-gray-500">
+          <Navigation size={12} className="text-gray-400" />
+          {s.station.replace(/駅$/, "")}駅 徒歩{s.walk_minutes}分
+          {s.price_range && <><span className="text-gray-300 mx-1">|</span>{s.price_range}</>}
+        </div>
+      </div>
+
+      {/* 基本情報 */}
+      <div className="bg-white px-5 py-4 mt-2 border-b border-gray-100">
+        <div className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">基本情報</div>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ["最寄り駅", `${s.station.replace(/駅$/, "")}駅 徒歩${s.walk_minutes}分`],
+            ["営業時間", s.hours || "—"],
+            ["価格帯",   s.price_range || "—"],
+            ["カテゴリ", s.tags?.join(" / ") || "—"],
+            ["改札",     s.is_inside_gate ? "改札内" : s.is_inside_gate === false ? "改札外" : "—"],
+            ["定休日",   s.closed_days?.length ? s.closed_days.join("・") : "—"],
+            ["決済方法", s.payment_methods?.length ? s.payment_methods.join(" / ") : "—"],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-gray-50 rounded-lg p-2.5">
+              <div className="text-[10px] text-gray-400 mb-0.5">{label}</div>
+              <div className="text-xs font-medium text-gray-700">{value}</div>
+            </div>
+          ))}
+        </div>
+        {s.media_mentions?.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="text-[10px] text-gray-400 mb-1.5">メディア掲載</div>
+            <div className="flex flex-wrap gap-1.5">
+              {s.media_mentions.map((m, i) => (
+                <span key={i} className="text-[11px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                  {m.name}{m.date ? ` (${m.date})` : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {s.description && (
+          <p className="text-sm text-gray-600 leading-relaxed mt-3">{s.description}</p>
+        )}
+      </div>
+
+      {/* 地図 */}
+      <div className="bg-white mt-2 border-b border-gray-100">
+        <div className="text-sm font-bold text-gray-800 px-5 pt-4 pb-2">地図</div>
+        <MapView shops={[s]} onSelectShop={null} />
+      </div>
+
+      {/* 口コミ投稿 */}
+      <div className="bg-white mt-2 px-5 py-4 border-b border-gray-100">
+        <div className="text-sm font-bold text-gray-800 mb-3">口コミを投稿する</div>
+        {!user ? (
+          <button onClick={loginWithGoogle}
+            className="w-full py-3 rounded-xl text-white text-sm font-semibold border-none cursor-pointer"
+            style={{ background: "#4285F4" }}>
+            Googleでログインして投稿する
+          </button>
+        ) : (
+          <>
+            <div className="flex gap-1 mb-3">
+              {[1,2,3,4,5].map(i => (
+                <button key={i} onClick={() => setPendingRating(i)}
+                  className="text-3xl bg-transparent border-none cursor-pointer p-0 leading-none"
+                  style={{ color: i <= pendingRating ? ACCENT : "#DDD" }}>★</button>
+              ))}
+            </div>
+            <textarea
+              ref={reviewTextareaRef}
+              value={reviewText}
+              onChange={e => setReviewText(e.target.value)}
+              onCompositionStart={() => { reviewComposingRef.current = true; }}
+              onCompositionEnd={() => {
+                reviewComposingRef.current = false;
+                autoResizeTextarea(reviewTextareaRef.current);
+              }}
+              placeholder="このお店の感想を書いてください..."
+              className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none min-h-[90px] mb-2 outline-none box-border overflow-hidden"
+              style={{ fontFamily: FONT }}
+            />
+            <button onClick={submitReview} disabled={submitting}
+              className="py-2 px-6 rounded-lg text-white text-sm font-semibold border-none cursor-pointer"
+              style={{ background: ACCENT, opacity: submitting ? 0.7 : 1 }}>
+              {submitting ? "投稿中..." : "投稿する"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 口コミ一覧 */}
+      <div className="bg-white mt-2 px-5 py-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">口コミ（{shopRevs.length}件）</div>
+        {shopRevs.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm">
+            まだ口コミがありません
+          </div>
+        ) : shopRevs.map((r, idx) => (
+          <div key={r.id} className={cn("py-3", idx < shopRevs.length - 1 && "border-b border-gray-100")}>
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-xs font-bold text-blue-500">
+                  {(r.user_name || "?")[0]}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-800">{r.user_name || "ユーザー"}</div>
+                  <div className="text-[10px] text-gray-400">{new Date(r.created_at).toLocaleDateString("ja-JP")}</div>
+                </div>
+                <div className="ml-2"><StarRow score={r.rating} size={11} /></div>
+              </div>
+              {user?.id === r.user_id && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => startEditReview(r)}
+                    className="text-gray-400 hover:text-gray-700 p-1 rounded-full"
+                    title="編集"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => deleteReview(r.id)}
+                    className="text-gray-400 hover:text-gray-700 p-1 rounded-full"
+                    title="削除"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editingReviewId === r.id ? (
+              <div className="mt-2">
+                <div className="flex gap-1 mb-2">
+                  {[1,2,3,4,5].map(i => (
+                    <button key={i} onClick={() => setEditingReviewRating(i)}
+                      className="text-2xl bg-transparent border-none cursor-pointer p-0 leading-none"
+                      style={{ color: i <= editingReviewRating ? ACCENT : "#DDD" }}>★</button>
+                  ))}
+                </div>
+                <textarea
+                  ref={editTextareaRef}
+                  value={editingReviewText}
+                  onChange={e => setEditingReviewText(e.target.value)}
+                  onCompositionStart={() => { editComposingRef.current = true; }}
+                  onCompositionEnd={() => {
+                    editComposingRef.current = false;
+                    autoResizeTextarea(editTextareaRef.current);
+                  }}
+                  className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none min-h-[90px] mb-2 outline-none box-border overflow-hidden"
+                />
+                <div className="flex items-center gap-2">
+                  <button onClick={saveEditedReview}
+                    disabled={editingReviewSaving}
+                    className="py-2 px-4 rounded-lg text-white text-sm font-semibold border-none cursor-pointer"
+                    style={{ background: ACCENT, opacity: editingReviewSaving ? 0.7 : 1 }}>
+                    {editingReviewSaving ? "保存中..." : "保存"}
+                  </button>
+                  <button onClick={cancelEditReview}
+                    className="py-2 px-4 rounded-lg text-sm font-semibold border border-gray-200 bg-white text-gray-700">
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 leading-relaxed">{r.comment}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── タイムラインビュー ──────────────────────────────────── */
 export default function App() {
   const [shops, setShops]               = useState([]);
   const [allReviews, setAllReviews]     = useState([]);
@@ -219,10 +568,6 @@ export default function App() {
   const [showMenu, setShowMenu]         = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showEditModal, setShowEditModal]         = useState(false);
-  const [pendingRating, setPendingRating] = useState(0);
-  const [reviewText, setReviewText]     = useState("");
-  const [submitting, setSubmitting]     = useState(false);
-  const [routeFilterIds, setRouteFilterIds] = useState(null);
   const [loading, setLoading]           = useState(true);
   const [filterOpenNow, setFilterOpenNow]       = useState(false);
   const [filterSkipClosed, setFilterSkipClosed] = useState(false);
@@ -232,9 +577,6 @@ export default function App() {
   const [filterAtTime, setFilterAtTime]         = useState("");
   const [excludeQuery, setExcludeQuery]         = useState("");
   const [inquiries, setInquiries]               = useState([]);
-  const [inqSubject, setInqSubject]             = useState("");
-  const [inqContent, setInqContent]             = useState("");
-  const [submittingInq, setSubmittingInq]       = useState(false);
 
   /* ── データ取得 ──────────────────────────────────────────── */
   useEffect(() => {
@@ -261,6 +603,7 @@ export default function App() {
 
   useEffect(() => { if (user) fetchFavorites(user.id); }, [user]);
   useEffect(() => { if (selectedShop) fetchReviews(selectedShop.id); }, [selectedShop]);
+
 
   async function fetchShops() {
     try {
@@ -308,19 +651,11 @@ export default function App() {
     if (data) setInquiries(data);
   }
 
-  async function submitInquiry() {
-    if (!user) { loginWithGoogle(); return; }
-    if (!inqSubject.trim() || !inqContent.trim()) { alert("件名と内容を入力してください"); return; }
-    setSubmittingInq(true);
-    const { error } = await supabase.from("inquiries").insert({
-      user_id: user.id,
-      user_name: user.user_metadata?.full_name || "ユーザー",
-      subject: inqSubject.trim(),
-      content: inqContent.trim(),
-    });
-    if (!error) { setInqSubject(""); setInqContent(""); fetchInquiries(); }
-    setSubmittingInq(false);
-  }
+  const refreshReviews = async (shopId) => {
+    await fetchReviews(shopId);
+    await fetchAllReviews();
+    await fetchTimeline();
+  };
 
   /* ── 認証 ────────────────────────────────────────────────── */
   async function loginWithGoogle() {
@@ -341,24 +676,6 @@ export default function App() {
     }
   }
 
-  /* ── 口コミ投稿 ──────────────────────────────────────────── */
-  async function submitReview() {
-    if (!user) { loginWithGoogle(); return; }
-    if (!pendingRating) { alert("星評価を選んでください"); return; }
-    if (!reviewText.trim()) { alert("コメントを入力してください"); return; }
-    setSubmitting(true);
-    const { error } = await supabase.from("reviews").insert({
-      shop_id: selectedShop.id, user_id: user.id,
-      user_name: user.user_metadata?.full_name || "ユーザー",
-      rating: pendingRating, comment: reviewText.trim(),
-    });
-    if (!error) {
-      setPendingRating(0); setReviewText("");
-      fetchReviews(selectedShop.id); fetchAllReviews(); fetchTimeline();
-    }
-    setSubmitting(false);
-  }
-
   /* ── ユーティリティ ──────────────────────────────────────── */
   function avgRating(shopId) {
     const r = allReviews.filter(r => r.shop_id === shopId);
@@ -377,7 +694,6 @@ export default function App() {
 
   /* ── フィルタリング & ソート ─────────────────────────────── */
   const filteredShops = shops.filter(s => {
-    if (routeFilterIds !== null && !routeFilterIds.has(s.id)) return false;
     if (categoryFilter !== "all" && !s.category?.includes(categoryFilter)) return false;
     if (stationFilter !== "all" && s.station !== stationFilter) return false;
     if (searchQuery) {
@@ -563,167 +879,6 @@ export default function App() {
     );
   }
 
-  /* ── 詳細ページ ──────────────────────────────────────────── */
-  function DetailView() {
-    const s         = selectedShop;
-    const shopRevs  = reviews.filter(r => r.shop_id === s.id);
-    const avg       = avgRating(s.id);
-    const isFav     = favorites.has(s.id);
-
-    return (
-      <div className="max-w-2xl mx-auto pb-10" style={{ fontFamily: FONT }}>
-        {/* ヒーロー写真 */}
-        <div className="relative" style={{ height: 200 }}>
-          <PhotoGrid shop={s} />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span style={{ fontSize: 64, filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.2))" }}>
-              {s.emoji || "🍡"}
-            </span>
-          </div>
-          <button
-            onClick={() => { setSelectedShop(null); setView("explore"); }}
-            className="absolute top-3 left-3 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow cursor-pointer border-none"
-          >
-            <ChevronLeft size={18} className="text-gray-700" />
-          </button>
-          <button
-            onClick={(e) => toggleFavorite(e, s.id)}
-            className="absolute top-3 right-3 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow cursor-pointer border-none"
-          >
-            <Bookmark size={18} fill={isFav ? ACCENT : "none"} color={isFav ? ACCENT : "#666"} />
-          </button>
-        </div>
-
-        {/* 店名・評価 */}
-        <div className="bg-white px-5 py-4 border-b border-gray-100">
-          <div className="flex items-start justify-between gap-2">
-            <h1 className="text-xl font-black text-gray-900 mb-1.5">{s.name}</h1>
-            {/* オーナーのみ編集ボタン表示 */}
-            {user && s.submitted_by === user.id && (
-              <button
-                onClick={() => setShowEditModal(true)}
-                className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 bg-white cursor-pointer"
-              >
-                <Pencil size={12} />編集
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <StarRow score={parseFloat(avg || 0)} size={16} />
-            {avg ? (
-              <>
-                <span className="text-2xl font-black" style={{ color: ACCENT }}>{avg}</span>
-                <span className="text-xs text-gray-400">（{shopRevs.length}件）</span>
-              </>
-            ) : <span className="text-sm text-gray-400">まだ評価なし</span>}
-          </div>
-          <div className="flex items-center gap-1 mt-2 text-sm text-gray-500">
-            <Navigation size={12} className="text-gray-400" />
-            {s.station.replace(/駅$/, "")}駅 徒歩{s.walk_minutes}分
-            {s.price_range && <><span className="text-gray-300 mx-1">|</span>{s.price_range}</>}
-          </div>
-        </div>
-
-        {/* 基本情報 */}
-        <div className="bg-white px-5 py-4 mt-2 border-b border-gray-100">
-          <div className="text-sm font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">基本情報</div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              ["最寄り駅", `${s.station.replace(/駅$/, "")}駅 徒歩${s.walk_minutes}分`],
-              ["営業時間", s.hours || "—"],
-              ["価格帯",   s.price_range || "—"],
-              ["カテゴリ", s.tags?.join(" / ") || "—"],
-              ["改札",     s.is_inside_gate ? "改札内" : s.is_inside_gate === false ? "改札外" : "—"],
-              ["定休日",   s.closed_days?.length ? s.closed_days.join("・") : "—"],
-              ["決済方法", s.payment_methods?.length ? s.payment_methods.join(" / ") : "—"],
-            ].map(([label, value]) => (
-              <div key={label} className="bg-gray-50 rounded-lg p-2.5">
-                <div className="text-[10px] text-gray-400 mb-0.5">{label}</div>
-                <div className="text-xs font-medium text-gray-700">{value}</div>
-              </div>
-            ))}
-          </div>
-          {s.media_mentions?.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className="text-[10px] text-gray-400 mb-1.5">メディア掲載</div>
-              <div className="flex flex-wrap gap-1.5">
-                {s.media_mentions.map((m, i) => (
-                  <span key={i} className="text-[11px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-                    {m.name}{m.date ? ` (${m.date})` : ""}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {s.description && (
-            <p className="text-sm text-gray-600 leading-relaxed mt-3">{s.description}</p>
-          )}
-        </div>
-
-        {/* 地図 */}
-        <div className="bg-white mt-2 border-b border-gray-100">
-          <div className="text-sm font-bold text-gray-800 px-5 pt-4 pb-2">地図</div>
-          <MapView shops={[s]} onSelectShop={null} hideRoutePanel />
-        </div>
-
-        {/* 口コミ投稿 */}
-        <div className="bg-white mt-2 px-5 py-4 border-b border-gray-100">
-          <div className="text-sm font-bold text-gray-800 mb-3">口コミを投稿する</div>
-          {!user ? (
-            <button onClick={loginWithGoogle}
-              className="w-full py-3 rounded-xl text-white text-sm font-semibold border-none cursor-pointer"
-              style={{ background: "#4285F4" }}>
-              Googleでログインして投稿する
-            </button>
-          ) : (
-            <>
-              <div className="flex gap-1 mb-3">
-                {[1,2,3,4,5].map(i => (
-                  <button key={i} onClick={() => setPendingRating(i)}
-                    className="text-3xl bg-transparent border-none cursor-pointer p-0 leading-none"
-                    style={{ color: i <= pendingRating ? ACCENT : "#DDD" }}>★</button>
-                ))}
-              </div>
-              <textarea value={reviewText} onChange={e => setReviewText(e.target.value)}
-                placeholder="このお店の感想を書いてください..."
-                className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-y min-h-20 mb-2 outline-none box-border"
-                style={{ fontFamily: FONT }} />
-              <button onClick={submitReview} disabled={submitting}
-                className="py-2 px-6 rounded-lg text-white text-sm font-semibold border-none cursor-pointer"
-                style={{ background: ACCENT, opacity: submitting ? 0.7 : 1 }}>
-                {submitting ? "投稿中..." : "投稿する"}
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* 口コミ一覧 */}
-        <div className="bg-white mt-2 px-5 py-4">
-          <div className="text-sm font-bold text-gray-800 mb-3">口コミ（{shopRevs.length}件）</div>
-          {shopRevs.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm">
-              まだ口コミがありません
-            </div>
-          ) : shopRevs.map((r, idx) => (
-            <div key={r.id} className={cn("py-3", idx < shopRevs.length - 1 && "border-b border-gray-100")}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-xs font-bold text-blue-500">
-                  {(r.user_name || "?")[0]}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-gray-800">{r.user_name || "ユーザー"}</div>
-                  <div className="text-[10px] text-gray-400">{new Date(r.created_at).toLocaleDateString("ja-JP")}</div>
-                </div>
-                <StarRow score={r.rating} size={11} />
-              </div>
-              <p className="text-sm text-gray-600 leading-relaxed">{r.comment}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   /* ── タイムラインビュー ──────────────────────────────────── */
   function TimelineView() {
     const [expandedId, setExpandedId] = useState(null);
@@ -863,163 +1018,6 @@ export default function App() {
     );
   }
 
-  /* ── お問い合わせ掲示板ビュー ────────────────────────────── */
-  function InquiryView() {
-    const [expandedId, setExpandedId] = useState(null);
-    const [replies, setReplies] = useState({});
-    const [replyTexts, setReplyTexts] = useState({});
-    const [submittingReply, setSubmittingReply] = useState(false);
-
-    async function loadReplies(inqId) {
-      const { data } = await supabase.from("inquiry_replies")
-        .select("*").eq("inquiry_id", inqId).order("created_at");
-      setReplies(prev => ({ ...prev, [inqId]: data || [] }));
-    }
-
-    async function postReply(inqId) {
-      if (!user) { loginWithGoogle(); return; }
-      const text = replyTexts[inqId]?.trim();
-      if (!text) return;
-      setSubmittingReply(true);
-      await supabase.from("inquiry_replies").insert({
-        inquiry_id: inqId,
-        user_id: user.id,
-        user_name: user.user_metadata?.full_name || "ユーザー",
-        content: text,
-      });
-      setReplyTexts(prev => ({ ...prev, [inqId]: "" }));
-      await loadReplies(inqId);
-      setSubmittingReply(false);
-    }
-
-    function toggleExpand(id) {
-      const next = expandedId === id ? null : id;
-      setExpandedId(next);
-      if (next && !replies[next]) loadReplies(next);
-    }
-
-    return (
-      <div>
-        {/* 新規投稿フォーム */}
-        <div className="bg-white px-4 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-800 mb-3">新規投稿</h2>
-          {!user ? (
-            <button onClick={loginWithGoogle}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 bg-gray-50 cursor-pointer">
-              <LogIn size={14} /> Googleログインして投稿する
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <input
-                value={inqSubject}
-                onChange={e => setInqSubject(e.target.value)}
-                placeholder="件名"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
-              />
-              <textarea
-                value={inqContent}
-                onChange={e => setInqContent(e.target.value)}
-                placeholder="内容を入力してください"
-                rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-none"
-              />
-              <button
-                onClick={submitInquiry}
-                disabled={submittingInq || !inqSubject.trim() || !inqContent.trim()}
-                className="self-end flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white border-none cursor-pointer"
-                style={{ background: ACCENT, opacity: !inqSubject.trim() || !inqContent.trim() ? 0.5 : 1 }}
-              >
-                <Send size={13} /> 送信
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 投稿一覧 */}
-        {inquiries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-            <HelpCircle size={36} className="mb-2 opacity-30" />
-            <p className="text-sm">まだ投稿がありません</p>
-          </div>
-        ) : (
-          <div className="bg-white divide-y divide-gray-100">
-            {inquiries.map(inq => (
-              <div key={inq.id}>
-                {/* 投稿ヘッダー */}
-                <button
-                  onClick={() => toggleExpand(inq.id)}
-                  className="w-full text-left px-4 py-3.5 flex items-start gap-3 bg-transparent border-none cursor-pointer hover:bg-gray-50"
-                >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                    style={{ background: ACCENT }}>
-                    {(inq.user_name || "?")[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-xs font-semibold text-gray-700">{inq.user_name}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(inq.created_at).toLocaleDateString("ja-JP")}</span>
-                    </div>
-                    <div className="text-sm font-bold text-gray-900 truncate">{inq.subject}</div>
-                    {expandedId !== inq.id && (
-                      <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{inq.content}</div>
-                    )}
-                  </div>
-                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1"
-                    style={{ transform: expandedId === inq.id ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
-                </button>
-
-                {/* 展開コンテンツ */}
-                {expandedId === inq.id && (
-                  <div className="px-4 pb-4 bg-gray-50">
-                    <p className="text-sm text-gray-700 leading-relaxed py-2 border-b border-gray-200 mb-3">{inq.content}</p>
-                    {/* 返信一覧 */}
-                    {(replies[inq.id] || []).map(rep => (
-                      <div key={rep.id} className="flex items-start gap-2 mb-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 flex-shrink-0">
-                          {(rep.user_name || "?")[0]}
-                        </div>
-                        <div className="flex-1 min-w-0 bg-white rounded-xl px-3 py-2 border border-gray-100">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-[11px] font-semibold text-gray-700">{rep.user_name}</span>
-                            <span className="text-[10px] text-gray-400">{new Date(rep.created_at).toLocaleDateString("ja-JP")}</span>
-                          </div>
-                          <p className="text-xs text-gray-600">{rep.content}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {/* 返信入力 */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <input
-                        value={replyTexts[inq.id] || ""}
-                        onChange={e => setReplyTexts(prev => ({ ...prev, [inq.id]: e.target.value }))}
-                        onKeyDown={e => e.key === "Enter" && postReply(inq.id)}
-                        placeholder={user ? "返信を入力…" : "ログインして返信"}
-                        readOnly={!user}
-                        onClick={() => { if (!user) loginWithGoogle(); }}
-                        className="flex-1 text-xs border border-gray-200 rounded-full px-3 py-1.5 outline-none bg-white"
-                      />
-                      <button
-                        onClick={() => postReply(inq.id)}
-                        disabled={submittingReply || !replyTexts[inq.id]?.trim()}
-                        className="w-7 h-7 rounded-full flex items-center justify-center border-none cursor-pointer flex-shrink-0"
-                        style={{ background: ACCENT, opacity: !replyTexts[inq.id]?.trim() ? 0.4 : 1 }}
-                      >
-                        <Send size={12} color="white" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* ════════════════════════════════════════════════════════════
-     メインレンダリング
-  ════════════════════════════════════════════════════════════ */
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-100" style={{ fontFamily: FONT }}>
 
@@ -1028,6 +1026,9 @@ export default function App() {
 
         {/* 1段目: 検索バー + ハンバーガー */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold" style={{ color: ACCENT }}>テミヤゲ</span>
+          </div>
           <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-full px-3.5 py-2">
             <Search size={15} className="text-gray-400 flex-shrink-0" />
             <input
@@ -1084,7 +1085,18 @@ export default function App() {
       {view === "detail" ? (
         /* 詳細ページ */
         <div className="flex-1 overflow-y-auto bg-gray-50">
-          <DetailView />
+          <DetailView
+            shop={selectedShop}
+            user={user}
+            favorites={favorites}
+            reviews={reviews}
+            avgRating={avgRating}
+            toggleFavorite={toggleFavorite}
+            loginWithGoogle={loginWithGoogle}
+            onBack={() => { setSelectedShop(null); setView("explore"); }}
+            refreshReviews={refreshReviews}
+            setShowEditModal={setShowEditModal}
+          />
         </div>
 
       ) : view !== "explore" ? (
@@ -1092,7 +1104,12 @@ export default function App() {
         <div className="flex-1 overflow-y-auto bg-gray-50">
           {view === "favorites" ? <FavoritesView />
            : view === "timeline" ? <TimelineView />
-           : view === "inquiry"  ? <InquiryView />
+           : view === "inquiry"  ? <InquiryView
+              user={user}
+              loginWithGoogle={loginWithGoogle}
+              inquiries={inquiries}
+              refreshInquiries={fetchInquiries}
+            />
            : <HistoryView />}
         </div>
 
@@ -1105,7 +1122,6 @@ export default function App() {
             <MapView
               shops={filteredShops}
               onSelectShop={openDetail}
-              onRouteShopsChange={setRouteFilterIds}
               mapHeight="30vh"
               noRadius
               selectedStation={stationFilter}
@@ -1193,19 +1209,9 @@ export default function App() {
           {/* ── 件数 + ソートボタン ──────────────────────────── */}
           <div className="flex-shrink-0 bg-white flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
             <div className="flex items-center gap-2">
-              {routeFilterIds ? (
-                <>
-                  <span className="text-sm font-bold" style={{ color: ACCENT }}>🗺️ ルート沿い</span>
-                  <button onClick={() => setRouteFilterIds(null)}
-                    className="bg-transparent border-none cursor-pointer p-0">
-                    <X size={13} className="text-gray-400" />
-                  </button>
-                </>
-              ) : (
-                <span className="text-sm font-bold text-gray-900">
-                  {stationFilter !== "all" ? `${stationFilter.replace(/駅$/, "")}駅` : "近くのお店"}
-                </span>
-              )}
+              <span className="text-sm font-bold text-gray-900">
+                {stationFilter !== "all" ? `${stationFilter.replace(/駅$/, "")}駅` : "近くのお店"}
+              </span>
               <span className="text-sm text-gray-500">{sortedShops.length}件</span>
             </div>
             {/* ソートボタン */}
@@ -1264,12 +1270,12 @@ export default function App() {
           className="flex-shrink-0 bg-white flex items-stretch z-[200]"
           style={{ boxShadow: "0 -1px 0 #E8E8E8", paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          {TABS.map(({ id, label, Icon, badge }) => {
-            const active = view === id;
+          {TABS.map(tab => {
+            const active = view === tab.id;
             return (
               <button
-                key={id}
-                onClick={() => setView(id)}
+                key={tab.id}
+                onClick={() => setView(tab.id)}
                 className="flex-1 flex flex-col items-center justify-center py-2 bg-transparent border-none cursor-pointer min-h-[56px]"
               >
                 {/* アクティブ: pill背景 */}
@@ -1278,13 +1284,13 @@ export default function App() {
                   active ? "bg-orange-50" : ""
                 )}>
                   <div className="relative">
-                    <Icon
+                    <tab.Icon
                       size={22}
                       fill={active ? ACCENT : "none"}
                       color={active ? ACCENT : "#9CA3AF"}
                       strokeWidth={active ? 2.5 : 2}
                     />
-                    {badge > 0 && (
+                    {tab.badge > 0 && (
                       <span
                         className="absolute -top-1.5 -right-2 text-[8px] font-black text-white rounded-full flex items-center justify-center"
                         style={{
@@ -1294,7 +1300,7 @@ export default function App() {
                           padding: "0 3px",
                         }}
                       >
-                        {badge > 99 ? "99+" : badge}
+                        {tab.badge > 99 ? "99+" : tab.badge}
                       </span>
                     )}
                   </div>
@@ -1302,7 +1308,7 @@ export default function App() {
                     className="text-[10px] font-medium"
                     style={{ color: active ? ACCENT : "#9CA3AF" }}
                   >
-                    {label}
+                    {tab.label}
                   </span>
                 </div>
               </button>
@@ -1362,11 +1368,11 @@ export default function App() {
                 { icon: MessageSquare, label: "タイムライン", action: () => { setView("timeline"); setShowMenu(false); } },
                 { icon: History,     label: "閲覧履歴",       action: () => { setView("history"); setShowMenu(false); } },
                 { icon: PlusCircle,  label: "お店を登録する", action: () => { setShowRegisterModal(true); setShowMenu(false); } },
-              ].map(({ icon: Icon, label, action }) => (
-                <button key={label} onClick={action}
+              ].map(item => (
+                <button key={item.label} onClick={item.action}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-700 text-left bg-transparent border-none cursor-pointer hover:bg-gray-50">
-                  <Icon size={18} className="text-gray-500" />
-                  {label}
+                  <item.icon size={18} className="text-gray-500" />
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -1481,6 +1487,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
     setSaving(false);
     if (error) { alert("登録に失敗しました: " + error.message); return; }
     setDone(true);
+    onSuccess?.();
   }
 
   return (
@@ -1741,6 +1748,193 @@ function OwnerEditModal({ shop, onClose, onSave }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function InquiryView({ user, loginWithGoogle, inquiries, refreshInquiries }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const [replies, setReplies] = useState({});
+  const [replyTexts, setReplyTexts] = useState({});
+  const [submittingReply, setSubmittingReply] = useState(false);
+
+  const [inqSubject, setInqSubject] = useState("");
+  const [inqContent, setInqContent] = useState("");
+  const [submittingInq, setSubmittingInq] = useState(false);
+  const inquiryTextareaRef = useRef(null);
+  const inquiryComposingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (inquiryComposingRef.current) return;
+    autoResizeTextarea(inquiryTextareaRef.current);
+  }, [inqContent]);
+
+  async function loadReplies(inqId) {
+    const { data } = await supabase.from("inquiry_replies")
+      .select("*").eq("inquiry_id", inqId).order("created_at");
+    setReplies(prev => ({ ...prev, [inqId]: data || [] }));
+  }
+
+  async function postReply(inqId) {
+    if (!user) { loginWithGoogle(); return; }
+    const text = replyTexts[inqId]?.trim();
+    if (!text) return;
+    setSubmittingReply(true);
+    await supabase.from("inquiry_replies").insert({
+      inquiry_id: inqId,
+      user_id: user.id,
+      user_name: user.user_metadata?.full_name || "ユーザー",
+      content: text,
+    });
+    setReplyTexts(prev => ({ ...prev, [inqId]: "" }));
+    await loadReplies(inqId);
+    setSubmittingReply(false);
+  }
+
+  async function submitInquiry() {
+    if (!user) { loginWithGoogle(); return; }
+    if (!inqSubject.trim() || !inqContent.trim()) { alert("件名と内容を入力してください"); return; }
+    setSubmittingInq(true);
+    const { error } = await supabase.from("inquiries").insert({
+      user_id: user.id,
+      user_name: user.user_metadata?.full_name || "ユーザー",
+      subject: inqSubject.trim(),
+      content: inqContent.trim(),
+    });
+    if (!error) {
+      setInqSubject("");
+      setInqContent("");
+      await refreshInquiries?.();
+    }
+    setSubmittingInq(false);
+  }
+
+  function toggleExpand(id) {
+    const next = expandedId === id ? null : id;
+    setExpandedId(next);
+    if (next && !replies[next]) loadReplies(next);
+  }
+
+  return (
+    <div>
+      {/* 新規投稿フォーム */}
+      <div className="bg-white px-4 py-4 border-b border-gray-100">
+        <h2 className="text-sm font-bold text-gray-800 mb-3">新規投稿</h2>
+        {!user ? (
+          <button onClick={loginWithGoogle}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 bg-gray-50 cursor-pointer">
+            <LogIn size={14} /> Googleログインして投稿する
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <input
+              value={inqSubject}
+              onChange={e => setInqSubject(e.target.value)}
+              placeholder="件名"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+            />
+            <textarea
+              ref={inquiryTextareaRef}
+              value={inqContent}
+              onChange={e => setInqContent(e.target.value)}
+              onCompositionStart={() => { inquiryComposingRef.current = true; }}
+              onCompositionEnd={() => {
+                inquiryComposingRef.current = false;
+                autoResizeTextarea(inquiryTextareaRef.current);
+              }}
+              placeholder="内容を入力してください"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none resize-none min-h-[90px] overflow-hidden"
+            />
+            <button
+              onClick={submitInquiry}
+              disabled={submittingInq || !inqSubject.trim() || !inqContent.trim()}
+              className="self-end flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white border-none cursor-pointer"
+              style={{ background: ACCENT, opacity: !inqSubject.trim() || !inqContent.trim() ? 0.5 : 1 }}
+            >
+              <Send size={13} /> 送信
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 投稿一覧 */}
+      {inquiries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+          <HelpCircle size={36} className="mb-2 opacity-30" />
+          <p className="text-sm">まだ投稿がありません</p>
+        </div>
+      ) : (
+        <div className="bg-white divide-y divide-gray-100">
+          {inquiries.map(inq => (
+            <div key={inq.id}>
+              {/* 投稿ヘッダー */}
+              <button
+                onClick={() => toggleExpand(inq.id)}
+                className="w-full text-left px-4 py-3.5 flex items-start gap-3 bg-transparent border-none cursor-pointer hover:bg-gray-50"
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                  style={{ background: ACCENT }}>
+                  {(inq.user_name || "?")[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-xs font-semibold text-gray-700">{inq.user_name}</span>
+                    <span className="text-[10px] text-gray-400">{new Date(inq.created_at).toLocaleDateString("ja-JP")}</span>
+                  </div>
+                  <div className="text-sm font-bold text-gray-900 truncate">{inq.subject}</div>
+                  {expandedId !== inq.id && (
+                    <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{inq.content}</div>
+                  )}
+                </div>
+                <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1"
+                  style={{ transform: expandedId === inq.id ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+              </button>
+
+              {/* 展開コンテンツ */}
+              {expandedId === inq.id && (
+                <div className="px-4 pb-4 bg-gray-50">
+                  <p className="text-sm text-gray-700 leading-relaxed py-2 border-b border-gray-200 mb-3">{inq.content}</p>
+                  {/* 返信一覧 */}
+                  {(replies[inq.id] || []).map(rep => (
+                    <div key={rep.id} className="flex items-start gap-2 mb-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 flex-shrink-0">
+                        {(rep.user_name || "?")[0]}
+                      </div>
+                      <div className="flex-1 min-w-0 bg-white rounded-xl px-3 py-2 border border-gray-100">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[11px] font-semibold text-gray-700">{rep.user_name}</span>
+                          <span className="text-[10px] text-gray-400">{new Date(rep.created_at).toLocaleDateString("ja-JP")}</span>
+                        </div>
+                        <p className="text-xs text-gray-600">{rep.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {/* 返信入力 */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      value={replyTexts[inq.id] || ""}
+                      onChange={e => setReplyTexts(prev => ({ ...prev, [inq.id]: e.target.value }))}
+                      onKeyDown={e => e.key === "Enter" && postReply(inq.id)}
+                      placeholder={user ? "返信を入力…" : "ログインして返信"}
+                      readOnly={!user}
+                      onClick={() => { if (!user) loginWithGoogle(); }}
+                      className="flex-1 text-xs border border-gray-200 rounded-full px-3 py-1.5 outline-none bg-white"
+                    />
+                    <button
+                      onClick={() => postReply(inq.id)}
+                      disabled={submittingReply || !replyTexts[inq.id]?.trim()}
+                      className="w-7 h-7 rounded-full flex items-center justify-center border-none cursor-pointer flex-shrink-0"
+                      style={{ background: ACCENT, opacity: !replyTexts[inq.id]?.trim() ? 0.4 : 1 }}
+                    >
+                      <Send size={12} color="white" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
