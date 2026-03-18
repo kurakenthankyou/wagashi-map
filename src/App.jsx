@@ -10,7 +10,7 @@ import {
 import { cn } from "./lib/utils";
 
 /* ─── 定数 ────────────────────────────────────────────────── */
-const ACCENT  = "#FF8C00";
+const ACCENT  = "#C9687A";
 const BLUE    = "#0066CC";
 const FONT    = "'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif";
 
@@ -28,6 +28,7 @@ const CATEGORIES = [
   { id: "baked",      label: "焼き菓子",      emoji: "🥐" },
   { id: "baum",       label: "バウムクーヘン", emoji: "🍰" },
   { id: "senbei",     label: "せんべい",      emoji: "🍘" },
+  { id: "bread",      label: "パン",          emoji: "🍞" },
   { id: "candy",      label: "飴",            emoji: "🍬" },
   { id: "glutenfree", label: "グルテンフリー", emoji: "🌾" },
   { id: "vegan",      label: "ヴィーガン",    emoji: "🌿" },
@@ -157,7 +158,7 @@ function FilterChip({ active, onClick, label, chevron }) {
       onClick={onClick}
       className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer whitespace-nowrap transition-colors"
       style={active
-        ? { background: "#FF8C00", borderColor: "#FF8C00", color: "white" }
+        ? { background: "#C9687A", borderColor: "#C9687A", color: "white" }
         : { background: "white", borderColor: "#E5E7EB", color: "#555" }}
     >
       {label}
@@ -410,7 +411,7 @@ function DetailView({
             <div className="text-[10px] text-gray-400 mb-1.5">メディア掲載</div>
             <div className="flex flex-wrap gap-1.5">
               {s.media_mentions.map((m, i) => (
-                <span key={i} className="text-[11px] bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                <span key={i} className="text-[11px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-medium">
                   {m.name}{m.date ? ` (${m.date})` : ""}
                 </span>
               ))}
@@ -734,6 +735,7 @@ export default function App() {
     { id: "timeline",  label: "口コミ",      Icon: MessageSquare, badge: 0 },
     { id: "inquiry",   label: "問い合わせ",  Icon: HelpCircle,    badge: 0 },
     { id: "history",   label: "履歴",        Icon: History,       badge: history.length },
+    { id: "register",  label: "お店登録",    Icon: PlusCircle,    badge: 0, action: () => setShowRegisterModal(true) },
   ];
 
   /* ════════════════════════════════════════════════════════════
@@ -1179,7 +1181,7 @@ export default function App() {
                   value={filterAtTime}
                   onChange={e => setFilterAtTime(e.target.value)}
                   className="bg-transparent outline-none text-xs cursor-pointer"
-                  style={{ color: filterAtTime ? "#FF8C00" : "#555", fontWeight: filterAtTime ? 600 : 400 }}
+                  style={{ color: filterAtTime ? "#C9687A" : "#555", fontWeight: filterAtTime ? 600 : 400 }}
                 >
                   <option value="">時間指定</option>
                   {Array.from({ length: 33 }, (_, i) => {
@@ -1277,13 +1279,13 @@ export default function App() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setView(tab.id)}
+                onClick={() => tab.action ? tab.action() : setView(tab.id)}
                 className="flex-1 flex flex-col items-center justify-center py-2 bg-transparent border-none cursor-pointer min-h-[56px]"
               >
                 {/* アクティブ: pill背景 */}
                 <div className={cn(
                   "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all duration-150",
-                  active ? "bg-orange-50" : ""
+                  active ? "bg-pink-50" : ""
                 )}>
                   <div className="relative">
                     <tab.Icon
@@ -1434,6 +1436,7 @@ const CAT_OPTIONS = [
   { id: "baked",      label: "焼き菓子",      emoji: "🥐" },
   { id: "baum",       label: "バウムクーヘン", emoji: "🍰" },
   { id: "senbei",     label: "せんべい",      emoji: "🍘" },
+  { id: "bread",      label: "パン",          emoji: "🍞" },
   { id: "candy",      label: "飴",            emoji: "🍬" },
   { id: "glutenfree", label: "グルテンフリー", emoji: "🌾" },
   { id: "vegan",      label: "ヴィーガン",    emoji: "🌿" },
@@ -1501,7 +1504,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="text-base font-bold text-gray-900">
-            <PlusCircle size={16} className="inline mr-2 text-orange-500" />
+            <PlusCircle size={16} className="inline mr-2 text-pink-600" />
             お店を登録する
           </div>
           <button onClick={onClose}
@@ -1521,7 +1524,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
             </div>
             <button onClick={onClose}
               className="px-8 py-3 rounded-xl text-white text-sm font-semibold border-none cursor-pointer"
-              style={{ background: "#FF8C00" }}>
+              style={{ background: "#C9687A" }}>
               閉じる
             </button>
           </div>
@@ -1597,7 +1600,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
                     onClick={() => toggleCat(id)}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-colors"
                     style={form.category.includes(id)
-                      ? { background: "#FF8C00", borderColor: "#FF8C00", color: "white" }
+                      ? { background: "#C9687A", borderColor: "#C9687A", color: "white" }
                       : { background: "white", borderColor: "#E5E7EB", color: "#555" }}>
                     {emoji} {label}
                   </button>
@@ -1626,7 +1629,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.is_inside_gate}
                     onChange={e => set("is_inside_gate", e.target.checked)}
-                    className="w-4 h-4 accent-orange-500" />
+                    className="w-4 h-4 accent-pink-500" />
                   <span className="text-sm text-gray-700">改札内</span>
                 </label>
               </div>
@@ -1646,7 +1649,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
                     }))}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer"
                     style={form.payment_methods.includes(m)
-                      ? { background: "#FF8C00", borderColor: "#FF8C00", color: "white" }
+                      ? { background: "#C9687A", borderColor: "#C9687A", color: "white" }
                       : { background: "white", borderColor: "#E5E7EB", color: "#555" }}>
                     {m}
                   </button>
@@ -1677,7 +1680,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
               </p>
               <button onClick={submit} disabled={saving}
                 className="w-full py-3 rounded-xl text-white text-sm font-bold border-none cursor-pointer"
-                style={{ background: saving ? "#ccc" : "#FF8C00" }}>
+                style={{ background: saving ? "#ccc" : "#C9687A" }}>
                 {saving ? "送信中..." : "申請する"}
               </button>
             </div>
@@ -1715,7 +1718,7 @@ function OwnerEditModal({ shop, onClose, onSave }) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Pencil size={16} className="text-orange-500" />
+            <Pencil size={16} className="text-pink-600" />
             お店情報を編集
           </div>
           <button onClick={onClose}
@@ -1725,7 +1728,7 @@ function OwnerEditModal({ shop, onClose, onSave }) {
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-4">
-          <div className="bg-orange-50 rounded-lg px-4 py-3 text-xs text-orange-700">
+          <div className="bg-pink-50 rounded-lg px-4 py-3 text-xs text-pink-700">
             📍 <span className="font-semibold">{shop.name}</span> の情報を編集できます
           </div>
 
@@ -1761,7 +1764,7 @@ function OwnerEditModal({ shop, onClose, onSave }) {
           <div className="pb-4">
             <button onClick={save} disabled={saving}
               className="w-full py-3 rounded-xl text-white text-sm font-bold border-none cursor-pointer"
-              style={{ background: saving ? "#ccc" : "#FF8C00" }}>
+              style={{ background: saving ? "#ccc" : "#C9687A" }}>
               {saving ? "更新中..." : "更新する"}
             </button>
           </div>
