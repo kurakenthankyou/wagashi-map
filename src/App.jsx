@@ -194,6 +194,7 @@ function InfoSection({ shop }) {
         <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
           {shop.hours && <span>🕐 {shop.hours}</span>}
           {shop.price_range && <span>💰 {shop.price_range}</span>}
+          {shop.address && <span>📍 {shop.address}</span>}
         </div>
       </div>
     </div>
@@ -390,6 +391,7 @@ function DetailView({
         <div className="grid grid-cols-2 gap-2">
           {[
             ["最寄り駅", `${s.station.replace(/駅$/, "")}駅 徒歩${s.walk_minutes}分`],
+            ["住所",     s.address || "—"],
             ["営業時間", s.hours || "—"],
             ["価格帯",   s.price_range || "—"],
             ["カテゴリ", s.tags?.join(" / ") || "—"],
@@ -1440,7 +1442,7 @@ const CAT_OPTIONS = [
 ];
 const PAYMENT_OPTIONS = ["現金", "カード", "PayPay", "交通系IC", "QUICPay", "楽天ペイ"];
 const EMPTY_FORM = {
-  name: "", station: "", walk_minutes: "", description: "",
+  name: "", station: "", walk_minutes: "", address: "", description: "",
   hours: "", price_range: "", emoji: "🍡", tags: "", category: [],
   is_inside_gate: false, closed_days: "", payment_methods: [],
 };
@@ -1472,6 +1474,7 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
       name:            form.name.trim(),
       station:         form.station.trim(),
       walk_minutes:    parseInt(form.walk_minutes) || 0,
+      address:         form.address.trim() || null,
       description:     form.description.trim(),
       hours:           form.hours.trim(),
       price_range:     form.price_range.trim(),
@@ -1559,6 +1562,14 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
                   onChange={e => set("walk_minutes", e.target.value)}
                   placeholder="例：3" />
               </div>
+            </div>
+
+            {/* 住所 */}
+            <div>
+              <label className={LABEL_CLS}>住所</label>
+              <input className={INPUT_CLS} value={form.address}
+                onChange={e => set("address", e.target.value)}
+                placeholder="例：東京都新宿区新宿3-1-1" />
             </div>
 
             {/* 営業時間 + 価格帯 */}
@@ -1684,12 +1695,13 @@ function OwnerEditModal({ shop, onClose, onSave }) {
   const [hours,       setHours]       = useState(shop.hours       || "");
   const [description, setDescription] = useState(shop.description || "");
   const [price_range, setPriceRange]  = useState(shop.price_range || "");
+  const [address,     setAddress]     = useState(shop.address     || "");
   const [saving, setSaving]           = useState(false);
   const font = "'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif";
 
   async function save() {
     setSaving(true);
-    const payload = { hours, description, price_range };
+    const payload = { hours, description, price_range, address: address.trim() || null };
     const { error } = await supabase.from("shops").update(payload).eq("id", shop.id);
     setSaving(false);
     if (error) { alert("更新に失敗しました: " + error.message); return; }
@@ -1715,6 +1727,13 @@ function OwnerEditModal({ shop, onClose, onSave }) {
         <div className="overflow-y-auto px-5 py-4 space-y-4">
           <div className="bg-orange-50 rounded-lg px-4 py-3 text-xs text-orange-700">
             📍 <span className="font-semibold">{shop.name}</span> の情報を編集できます
+          </div>
+
+          <div>
+            <label className={LABEL_CLS}>住所</label>
+            <input className={INPUT_CLS} value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="例：東京都新宿区新宿3-1-1" />
           </div>
 
           <div>
