@@ -1125,7 +1125,7 @@ export default function App() {
 
           {/* ── 地図エリア（ルートパネル含む） ──────────────── */}
           {layoutMode !== "list" && (
-            <div className={layoutMode === "map" ? "flex-1 overflow-hidden" : "flex-shrink-0"}>
+            <div className={layoutMode === "map" ? "flex-1 overflow-hidden relative" : "flex-shrink-0"}>
               <MapView
                 shops={filteredShops}
                 onSelectShop={openDetail}
@@ -1133,6 +1133,31 @@ export default function App() {
                 noRadius
                 selectedStation={stationFilter}
               />
+              {/* 全画面地図モード時：分割表示に戻るボタン */}
+              {layoutMode === "map" && (
+                <button
+                  onClick={() => setLayoutMode("split")}
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    left: 12,
+                    zIndex: 20,
+                    background: "white",
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "6px 14px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  ☰ リスト表示
+                </button>
+              )}
             </div>
           )}
 

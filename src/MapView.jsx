@@ -129,17 +129,13 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
   }
 
   return (
+    <div style={{ position: "relative", width: "100%", height: mapHeight || "400px" }}>
     <LoadScript googleMapsApiKey={apiKey} language="ja">
       <GoogleMap
         mapContainerStyle={getContainerStyle(mapHeight, noRadius)}
         center={initialCenter}
         zoom={initialZoom}
         onLoad={onMapLoad}
-        onClick={() => {
-          if (currentLocation && mapRef.current) {
-            mapRef.current.panTo(currentLocation);
-          }
-        }}
         options={{
           streetViewControl: false,
           mapTypeControl: false,
@@ -233,5 +229,32 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
           })()}
       </GoogleMap>
     </LoadScript>
+    {/* 現在地ボタン */}
+    {currentLocation && (
+      <button
+        onClick={() => mapRef.current?.panTo(currentLocation)}
+        style={{
+          position: "absolute",
+          bottom: 16,
+          right: 12,
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: "white",
+          border: "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+          fontSize: 20,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10,
+        }}
+        title="現在地に移動"
+      >
+        📍
+      </button>
+    )}
+    </div>
   );
 }
