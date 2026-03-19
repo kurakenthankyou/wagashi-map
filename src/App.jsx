@@ -711,7 +711,11 @@ export default function App() {
 
   /* ── 認証 ────────────────────────────────────────────────── */
   async function loginWithGoogle() {
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: "https://wagashi-map.vercel.app" },
+    });
+    if (error) alert("ログインエラー: " + error.message);
   }
   async function logout() { await supabase.auth.signOut(); setFavorites(new Set()); }
 
