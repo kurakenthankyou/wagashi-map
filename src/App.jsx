@@ -1495,13 +1495,6 @@ export default function App() {
                 { icon: MessageSquare, label: "タイムライン", action: () => { setView("timeline"); setShowMenu(false); } },
                 { icon: History,     label: "閲覧履歴",       action: () => { setView("history"); setShowMenu(false); } },
                 { icon: PlusCircle,  label: "お店を登録する", action: () => { setShowRegisterModal(true); setShowMenu(false); } },
-                { icon: Share2, label: "友達に教える", action: () => {
-                  navigator.clipboard.writeText("https://wagashi-map.vercel.app").then(() => {
-                    setToast("URLをコピーしました");
-                    setTimeout(() => setToast(""), 2500);
-                  });
-                  setShowMenu(false);
-                }},
               ].map(item => (
                 <button key={item.label} onClick={item.action}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-700 text-left bg-transparent border-none cursor-pointer hover:bg-gray-50">
@@ -1509,6 +1502,20 @@ export default function App() {
                   {item.label}
                 </button>
               ))}
+              {/* 友達に教える */}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText("https://wagashi-map.vercel.app").then(() => {
+                    setToast("URLをコピーしました");
+                    setTimeout(() => setToast(""), 2500);
+                  });
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-left bg-transparent border-none cursor-pointer hover:bg-gray-50"
+                style={{ color: toast === "URLをコピーしました" ? "#16a34a" : "#374151" }}
+              >
+                <Share2 size={18} style={{ color: toast === "URLをコピーしました" ? "#16a34a" : "#6b7280" }} />
+                {toast === "URLをコピーしました" ? "URLをコピーしました ✓" : "友達に教える"}
+              </button>
             </div>
 
             {/* ログアウト */}
@@ -1521,19 +1528,6 @@ export default function App() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ── トースト通知 ──────────────────────────────────────── */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(30,30,30,0.88)", color: "white",
-          padding: "10px 20px", borderRadius: 24, fontSize: 14,
-          fontWeight: 500, zIndex: 9999, whiteSpace: "nowrap",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-        }}>
-          {toast}
         </div>
       )}
 
