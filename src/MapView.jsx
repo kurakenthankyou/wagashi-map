@@ -135,11 +135,17 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
         center={initialCenter}
         zoom={initialZoom}
         onLoad={onMapLoad}
+        onClick={() => {
+          if (currentLocation && mapRef.current) {
+            mapRef.current.panTo(currentLocation);
+          }
+        }}
         options={{
           streetViewControl: false,
           mapTypeControl: false,
           fullscreenControl: false,
           clickableIcons: false,
+          gestureHandling: "greedy",
         }}
       >
         {/* 現在地の青いドット */}
