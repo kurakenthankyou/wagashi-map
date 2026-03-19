@@ -69,8 +69,19 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
     }
   }
 
+  // 詳細ページ用：shop が1件の時はそのお店を中心にする
+  const singleShop = shops.length === 1 ? shops[0] : null;
+  const singlePos = singleShop ? shopPositions[singleShop.id] : null;
+  const initialCenter = singlePos || TOKYO_CENTER;
+  const initialZoom = singlePos ? 16 : 12;
+
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
+    // 1店舗の場合は即座にそこへ移動
+    if (singlePos) {
+      map.panTo(singlePos);
+      map.setZoom(16);
+    }
     // Get current location for blue dot
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -78,7 +89,7 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
         () => {}
       );
     }
-  }, []);
+  }, [singlePos]);
 
   // Pan map when selectedStation changes
   useEffect(() => {
@@ -121,8 +132,8 @@ export default function MapView({ shops, onSelectShop, mapHeight, noRadius, sele
     <LoadScript googleMapsApiKey={apiKey} language="ja">
       <GoogleMap
         mapContainerStyle={getContainerStyle(mapHeight, noRadius)}
-        center={TOKYO_CENTER}
-        zoom={12}
+        center={initialCenter}
+        zoom={initialZoom}
         onLoad={onMapLoad}
         options={{
           streetViewControl: false,
