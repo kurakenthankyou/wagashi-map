@@ -232,6 +232,19 @@ function DetailView({
   const [reviewText, setReviewText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressInput, setAddressInput]     = useState(s.address || "");
+  const [addressSaving, setAddressSaving]   = useState(false);
+
+  async function saveAddress() {
+    if (!addressInput.trim()) return;
+    setAddressSaving(true);
+    await supabase.from("shops").update({ address: addressInput.trim() }).eq("id", s.id);
+    s.address = addressInput.trim();
+    setEditingAddress(false);
+    setAddressSaving(false);
+  }
+
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [editingReviewText, setEditingReviewText] = useState("");
   const [editingReviewRating, setEditingReviewRating] = useState(0);
@@ -393,7 +406,6 @@ function DetailView({
         <div className="grid grid-cols-2 gap-2">
           {[
             ["最寄り駅", `${s.station.replace(/駅$/, "")}駅 徒歩${s.walk_minutes}分`],
-            ["住所",     s.address || "—"],
             ["営業時間", s.hours || "—"],
             ["価格帯",   s.price_range || "—"],
             ["カテゴリ", s.tags?.join(" / ") || "—"],
@@ -406,6 +418,39 @@ function DetailView({
               <div className="text-xs font-medium text-gray-700">{value}</div>
             </div>
           ))}
+          {/* 住所（インライン編集対応） */}
+          <div className="bg-gray-50 rounded-lg p-2.5 col-span-2">
+            <div className="text-[10px] text-gray-400 mb-0.5">住所</div>
+            {editingAddress ? (
+              <div className="flex gap-1 items-center">
+                <input
+                  className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none"
+                  value={addressInput}
+                  onChange={e => setAddressInput(e.target.value)}
+                  placeholder="例：東京都渋谷区〇〇1-2-3"
+                  autoFocus
+                />
+                <button onClick={saveAddress} disabled={addressSaving}
+                  className="text-xs px-2 py-1 rounded bg-orange-500 text-white border-none cursor-pointer">
+                  {addressSaving ? "…" : "保存"}
+                </button>
+                <button onClick={() => { setEditingAddress(false); setAddressInput(s.address || ""); }}
+                  className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600 border-none cursor-pointer">
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-700">{s.address || "—"}</span>
+                {user && (
+                  <button onClick={() => setEditingAddress(true)}
+                    className="text-[10px] text-blue-500 border-none bg-transparent cursor-pointer p-0 underline">
+                    {s.address ? "編集" : "追加する"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         {s.media_mentions?.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-100">
