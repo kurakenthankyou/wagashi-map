@@ -6,6 +6,7 @@ import {
   ArrowDownUp, ChevronDown, SlidersHorizontal, Navigation,
   Star, Heart, History, LogIn, LogOut, ChevronLeft, X,
   PlusCircle, Pencil, CheckCircle, HelpCircle, Send, ChevronRight,
+  Map, List, LayoutList,
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -562,6 +563,7 @@ export default function App() {
   const [history, setHistory]           = useState([]);
   const [user, setUser]                 = useState(null);
   const [view, setView]                 = useState("explore");
+  const [layoutMode, setLayoutMode]     = useState("split"); // "split" | "map" | "list"
   const [selectedShop, setSelectedShop] = useState(null);
   const [searchQuery, setSearchQuery]   = useState("");
   const [stationFilter, setStationFilter] = useState("all");
@@ -1122,15 +1124,17 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* ── 地図エリア（ルートパネル含む） ──────────────── */}
-          <div className="flex-shrink-0">
-            <MapView
-              shops={filteredShops}
-              onSelectShop={openDetail}
-              mapHeight="30vh"
-              noRadius
-              selectedStation={stationFilter}
-            />
-          </div>
+          {layoutMode !== "list" && (
+            <div className={layoutMode === "map" ? "flex-1 overflow-hidden" : "flex-shrink-0"}>
+              <MapView
+                shops={filteredShops}
+                onSelectShop={openDetail}
+                mapHeight={layoutMode === "map" ? "100%" : "30vh"}
+                noRadius
+                selectedStation={stationFilter}
+              />
+            </div>
+          )}
 
           {/* ── カテゴリチップバー ────────────────────────────── */}
           <div className="flex-shrink-0 bg-white border-b border-gray-100 overflow-x-auto no-scrollbar">
@@ -1211,6 +1215,7 @@ export default function App() {
           </div>
 
           {/* ── 件数 + ソートボタン ──────────────────────────── */}
+          {layoutMode !== "map" && (
           <div className="flex-shrink-0 bg-white flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-gray-900">
@@ -1243,9 +1248,31 @@ export default function App() {
                 </div>
               )}
             </div>
+            {/* ── 表示切り替えボタン ── */}
+            <div className="flex items-center gap-1 ml-2">
+              {[
+                { mode: "map",   icon: <Map size={14} />,       title: "地図のみ" },
+                { mode: "split", icon: <LayoutList size={14} />, title: "分割" },
+                { mode: "list",  icon: <List size={14} />,      title: "リストのみ" },
+              ].map(({ mode, icon, title }) => (
+                <button
+                  key={mode}
+                  onClick={() => setLayoutMode(mode)}
+                  title={title}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 cursor-pointer transition-all"
+                  style={layoutMode === mode
+                    ? { background: ACCENT, color: "#fff", borderColor: ACCENT }
+                    : { background: "#fff", color: "#888" }}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
+          )}
 
           {/* ── ショップグリッド（3列スクロール） ───────────── */}
+          {layoutMode !== "map" && (
           <div className="flex-1 overflow-y-auto bg-gray-50" onClick={() => setShowSortMenu(false)}>
             {loading ? (
               <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
@@ -1265,6 +1292,7 @@ export default function App() {
             )}
             <div className="h-4" />
           </div>
+          )}
         </div>
       )}
 
