@@ -611,7 +611,7 @@ export default function App() {
   async function fetchShops() {
     try {
       // まず全件取得（statusカラム有無に関わらず安全）
-      const { data, error } = await supabase.from("shops").select("*");
+      const { data, error } = await supabase.from("shops").select("*").limit(5000);
       if (error) throw error;
       // statusカラムが存在する場合はクライアント側でフィルター
       const hasStatus = data?.[0] && "status" in data[0];
