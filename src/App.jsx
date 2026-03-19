@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabase";
 import MapView from "./MapView";
 import {
@@ -581,6 +581,7 @@ export default function App() {
   const [filterLimited, setFilterLimited]       = useState(false);
   const [filterAtTime, setFilterAtTime]         = useState("");
   const [excludeQuery, setExcludeQuery]         = useState("");
+  const [displayLimit, setDisplayLimit]         = useState(60);
   const [inquiries, setInquiries]               = useState([]);
 
   /* ── データ取得 ──────────────────────────────────────────── */
@@ -682,12 +683,22 @@ export default function App() {
   }
 
   /* ── ユーティリティ ──────────────────────────────────────── */
+  const ratingMap = useMemo(() => {
+    const map = {};
+    for (const r of allReviews) {
+      if (!map[r.shop_id]) map[r.shop_id] = { sum: 0, count: 0 };
+      map[r.shop_id].sum += r.rating;
+      map[r.shop_id].count += 1;
+    }
+    return map;
+  }, [allReviews]);
+
   function avgRating(shopId) {
-    const r = allReviews.filter(r => r.shop_id === shopId);
-    if (!r.length) return null;
-    return (r.reduce((a, b) => a + b.rating, 0) / r.length).toFixed(1);
+    const r = ratingMap[shopId];
+    if (!r || !r.count) return null;
+    return (r.sum / r.count).toFixed(1);
   }
-  function reviewCount(shopId) { return allReviews.filter(r => r.shop_id === shopId).length; }
+  function reviewCount(shopId) { return ratingMap[shopId]?.count || 0; }
 
   function openDetail(shop) {
     setSelectedShop(shop);
@@ -698,7 +709,7 @@ export default function App() {
   const stations = ["all", ...new Set(shops.map(s => s.station))];
 
   /* ── フィルタリング & ソート ─────────────────────────────── */
-  const filteredShops = shops.filter(s => {
+  const filteredShops = useMemo(() => shops.filter(s => {
     if (categoryFilter !== "all" && !s.category?.includes(categoryFilter)) return false;
     if (stationFilter !== "all" && s.station !== stationFilter) return false;
     if (searchQuery) {
@@ -719,16 +730,19 @@ export default function App() {
     if (filterLimited && !s.is_limited_period) return false;
     if (filterAtTime && isOpenAt(s.hours, filterAtTime) === false) return false;
     return true;
-  });
+  }), [shops, categoryFilter, stationFilter, searchQuery, excludeQuery, filterOpenNow, filterSkipClosed, gateFilter, filterCashless, filterLimited, filterAtTime]);
 
-  const sortedShops = [...filteredShops].sort((a, b) => {
-    if (sortBy === "ranking" || sortBy === "rating") {
-      return parseFloat(avgRating(b.id) || 0) - parseFloat(avgRating(a.id) || 0);
-    }
-    if (sortBy === "distance") return a.walk_minutes - b.walk_minutes;
-    if (sortBy === "newest") return String(b.id) > String(a.id) ? 1 : -1;
-    return 0;
-  });
+  const sortedShops = useMemo(() => {
+    setDisplayLimit(60);
+    return [...filteredShops].sort((a, b) => {
+      if (sortBy === "ranking" || sortBy === "rating") {
+        return parseFloat(avgRating(b.id) || 0) - parseFloat(avgRating(a.id) || 0);
+      }
+      if (sortBy === "distance") return a.walk_minutes - b.walk_minutes;
+      if (sortBy === "newest") return String(b.id) > String(a.id) ? 1 : -1;
+      return 0;
+    });
+  }, [filteredShops, sortBy, ratingMap]);
 
   /* ── タブ定義 ────────────────────────────────────────────── */
   const TABS = [
@@ -1310,9 +1324,19 @@ export default function App() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2 p-2">
-                {sortedShops.map((shop) => (
+                {sortedShops.slice(0, displayLimit).map((shop) => (
                   <GridShopCard key={shop.id} shop={shop} />
                 ))}
+              </div>
+            )}
+            {sortedShops.length > displayLimit && (
+              <div className="flex justify-center py-4">
+                <button
+                  onClick={() => setDisplayLimit(l => l + 60)}
+                  className="px-6 py-2 rounded-full text-sm font-medium border border-gray-300 bg-white text-gray-600 cursor-pointer"
+                >
+                  もっと見る（あと{sortedShops.length - displayLimit}件）
+                </button>
               </div>
             )}
             <div className="h-4" />
