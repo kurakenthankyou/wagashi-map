@@ -6,7 +6,7 @@ import {
   ArrowDownUp, ChevronDown, SlidersHorizontal, Navigation,
   Star, Heart, History, LogIn, LogOut, ChevronLeft, X,
   PlusCircle, Pencil, CheckCircle, HelpCircle, Send, ChevronRight,
-  Map, List, LayoutList,
+  Map, List, LayoutList, Share2,
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -616,6 +616,7 @@ export default function App() {
   const [sortBy, setSortBy]             = useState("ranking");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showMenu, setShowMenu]         = useState(false);
+  const [toast, setToast]               = useState("");
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showEditModal, setShowEditModal]         = useState(false);
   const [loading, setLoading]           = useState(true);
@@ -1494,6 +1495,13 @@ export default function App() {
                 { icon: MessageSquare, label: "タイムライン", action: () => { setView("timeline"); setShowMenu(false); } },
                 { icon: History,     label: "閲覧履歴",       action: () => { setView("history"); setShowMenu(false); } },
                 { icon: PlusCircle,  label: "お店を登録する", action: () => { setShowRegisterModal(true); setShowMenu(false); } },
+                { icon: Share2, label: "友達に教える", action: () => {
+                  navigator.clipboard.writeText("https://wagashi-map.vercel.app").then(() => {
+                    setToast("URLをコピーしました");
+                    setTimeout(() => setToast(""), 2500);
+                  });
+                  setShowMenu(false);
+                }},
               ].map(item => (
                 <button key={item.label} onClick={item.action}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-gray-700 text-left bg-transparent border-none cursor-pointer hover:bg-gray-50">
@@ -1513,6 +1521,19 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── トースト通知 ──────────────────────────────────────── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(30,30,30,0.88)", color: "white",
+          padding: "10px 20px", borderRadius: 24, fontSize: 14,
+          fontWeight: 500, zIndex: 9999, whiteSpace: "nowrap",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+        }}>
+          {toast}
         </div>
       )}
 
