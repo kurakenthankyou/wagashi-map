@@ -1589,6 +1589,7 @@ const EMPTY_FORM = {
   name: "", station: "", walk_minutes: "", address: "", description: "",
   hours: "", price_range: "", emoji: "🍡", tags: "", category: [],
   is_inside_gate: false, closed_days: "", payment_methods: [],
+  is_limited_period: false, limited_start: "", limited_end: "",
 };
 const INPUT_CLS = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white box-border";
 const LABEL_CLS = "block text-xs text-gray-500 mb-1";
@@ -1627,9 +1628,12 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
       category:        form.category,
       is_inside_gate:  form.is_inside_gate,
       closed_days:     form.closed_days ? form.closed_days.split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean) : [],
-      payment_methods: form.payment_methods,
-      status:          "pending",
-      submitted_by:    user.id,
+      payment_methods:  form.payment_methods,
+      is_limited_period: form.is_limited_period || false,
+      limited_start:    form.is_limited_period && form.limited_start ? form.limited_start : null,
+      limited_end:      form.is_limited_period && form.limited_end ? form.limited_end : null,
+      status:           "pending",
+      submitted_by:     user.id,
     });
     setSaving(false);
     if (error) { alert("登録に失敗しました: " + error.message); return; }
@@ -1774,6 +1778,30 @@ function RegisterModal({ user, loginWithGoogle, onClose, onSuccess }) {
                   <span className="text-sm text-gray-700">改札内</span>
                 </label>
               </div>
+            </div>
+
+            {/* 期間限定 */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input type="checkbox" checked={form.is_limited_period}
+                  onChange={e => set("is_limited_period", e.target.checked)}
+                  className="w-4 h-4 accent-pink-500" />
+                <span className="text-sm font-medium text-gray-700">🎄 期間限定出店</span>
+              </label>
+              {form.is_limited_period && (
+                <div className="grid grid-cols-2 gap-3 mt-1 pl-6">
+                  <div>
+                    <label className={LABEL_CLS}>開始日</label>
+                    <input type="date" className={INPUT_CLS} value={form.limited_start}
+                      onChange={e => set("limited_start", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLS}>終了日</label>
+                    <input type="date" className={INPUT_CLS} value={form.limited_end}
+                      onChange={e => set("limited_end", e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 決済方法 */}
