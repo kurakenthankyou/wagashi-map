@@ -116,6 +116,19 @@ function PhotoGrid({ shop }) {
 const DAY_NAMES = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
 function todayDayName() { return DAY_NAMES[new Date().getDay()]; }
 
+function isLimitedEnded(shop) {
+  if (!shop.is_limited_period || !shop.limited_end) return false;
+  return new Date(shop.limited_end) < new Date(new Date().toDateString());
+}
+
+function isLimitedActive(shop) {
+  if (!shop.is_limited_period) return false;
+  const now = new Date(new Date().toDateString());
+  if (shop.limited_start && new Date(shop.limited_start) > now) return false;
+  if (shop.limited_end && new Date(shop.limited_end) < now) return false;
+  return true;
+}
+
 function isClosedToday(shop) {
   if (!shop.closed_days?.length) return false;
   const today = todayDayName();
@@ -399,6 +412,31 @@ function DetailView({
           {s.price_range && <><span className="text-gray-300 mx-1">|</span>{s.price_range}</>}
         </div>
       </div>
+
+      {/* 出店終了バナー */}
+      {isLimitedEnded(s) && (
+        <div className="bg-red-50 border-l-4 border-red-500 px-5 py-3 mt-2 flex items-center gap-3">
+          <span style={{ fontSize: 24 }}>🏁</span>
+          <div>
+            <div className="text-sm font-bold text-red-600">この出店は終了しました</div>
+            <div className="text-xs text-red-400 mt-0.5">
+              出店期間: {s.limited_start || "—"} 〜 {s.limited_end}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 期間限定・営業中バナー */}
+      {isLimitedActive(s) && (
+        <div className="bg-orange-50 border-l-4 border-orange-400 px-5 py-3 mt-2 flex items-center gap-3">
+          <span style={{ fontSize: 24 }}>🎄</span>
+          <div>
+            <div className="text-sm font-bold text-orange-600">期間限定出店中</div>
+            <div className="text-xs text-orange-400 mt-0.5">
+              {s.limited_start || "—"} 〜 {s.limited_end || "—"}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 基本情報 */}
       <div className="bg-white px-5 py-4 mt-2 border-b border-gray-100">
@@ -814,14 +852,20 @@ export default function App() {
     const avg     = avgRating(shop.id);
     const cnt     = reviewCount(shop.id);
     const closed  = isClosedToday(shop);
+    const ended   = isLimitedEnded(shop);
 
     return (
       <div
         onClick={() => openDetail(shop)}
         className="relative bg-white border-b border-gray-100 cursor-pointer active:bg-gray-50"
-        style={{ boxShadow: getCardBorder(shop), ...(closed ? { opacity: 0.55, background: "#F5F5F5" } : {}) }}
+        style={{ boxShadow: getCardBorder(shop), ...((closed || ended) ? { opacity: 0.55, background: "#F5F5F5" } : {}) }}
       >
-        {closed && (
+        {ended && (
+          <span className="absolute top-3 right-16 z-10 text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full">
+            🏁 出店終了
+          </span>
+        )}
+        {!ended && closed && (
           <span className="absolute top-3 right-16 z-10 text-[10px] font-bold text-white bg-gray-500 px-2 py-0.5 rounded-full">
             本日定休
           </span>
@@ -882,6 +926,7 @@ export default function App() {
     const isFav  = favorites.has(shop.id);
     const avg    = avgRating(shop.id);
     const closed = isClosedToday(shop);
+    const ended  = isLimitedEnded(shop);
     const idNum  = typeof shop.id === "number"
       ? shop.id
       : String(shop.id).split("").reduce((s, c) => s + c.charCodeAt(0), 0);
@@ -891,7 +936,7 @@ export default function App() {
       <div
         onClick={() => openDetail(shop)}
         className="relative bg-white rounded-xl overflow-hidden cursor-pointer border border-gray-100 active:opacity-75"
-        style={{ boxShadow: getCardBorder(shop), ...(closed ? { opacity: 0.55 } : {}) }}
+        style={{ boxShadow: getCardBorder(shop), ...((closed || ended) ? { opacity: 0.55 } : {}) }}
       >
         {/* 情報エリア（写真未登録時） */}
         <div className="w-full flex flex-col p-2"
@@ -923,8 +968,12 @@ export default function App() {
           )}
         </div>
 
-        {/* 本日定休バッジ */}
-        {closed && (
+        {/* 出店終了・本日定休バッジ */}
+        {ended ? (
+          <span className="absolute top-1.5 left-1.5 text-[8px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">
+            🏁終了
+          </span>
+        ) : closed && (
           <span className="absolute top-1.5 left-1.5 text-[8px] font-bold text-white bg-gray-500 px-1.5 py-0.5 rounded-full">
             本日定休
           </span>
