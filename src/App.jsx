@@ -1084,7 +1084,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-gray-100" style={{ fontFamily: FONT }}>
+    <div className="flex flex-col overflow-hidden bg-gray-100" style={{ fontFamily: FONT, height: "100dvh" }}>
 
       {/* ════ ヘッダー ════════════════════════════════════════ */}
       <header className="bg-white flex-shrink-0 z-[200]" style={{ boxShadow: "0 1px 0 #E8E8E8" }}>
@@ -1092,7 +1092,7 @@ export default function App() {
         {/* 1段目: 検索バー + ハンバーガー */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-2">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold" style={{ color: ACCENT }}>テミヤゲ</span>
+            <span className="text-lg font-bold cursor-pointer" style={{ color: ACCENT }} onClick={() => { setView("explore"); setSelectedShop(null); }}>テミヤゲ</span>
           </div>
           <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-full px-3.5 py-2">
             <Search size={15} className="text-gray-400 flex-shrink-0" />
